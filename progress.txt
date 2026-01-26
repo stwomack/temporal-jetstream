@@ -43,3 +43,47 @@
 - Task queue is configured as "flight-task-queue" for workflow operations
 
 ---
+## 2026-01-26 14:00 - story-2
+
+**What was implemented:**
+- Created Flight domain model class with all required fields:
+  - flightNumber, flightDate, departureStation, arrivalStation
+  - scheduledDeparture, scheduledArrival, currentState, gate, aircraft, delay
+- Created FlightState enum with all lifecycle states:
+  - SCHEDULED, BOARDING, DEPARTED, IN_FLIGHT, LANDED, COMPLETED, CANCELLED
+- Created FlightWorkflow interface with @WorkflowInterface and @WorkflowMethod annotations
+- Implemented FlightWorkflowImpl with deterministic state machine:
+  - Transitions through states: SCHEDULED -> BOARDING -> DEPARTED -> IN_FLIGHT -> LANDED -> COMPLETED
+  - Uses Workflow.sleep(Duration.ofSeconds(2)) between state transitions for simulation
+  - Proper logging at each state transition
+- Created TemporalConfig @Configuration class:
+  - Creates WorkflowServiceStubs, WorkflowClient, WorkerFactory, and Worker beans
+  - Registers FlightWorkflowImpl to 'flight-task-queue'
+  - Worker starts automatically via @PostConstruct and stops via @PreDestroy
+- Created comprehensive unit tests using TestWorkflowEnvironment:
+  - Test with TestWorkflowExtension for simplified testing
+  - Test with manual TestWorkflowEnvironment setup and WorkflowId verification
+  - Both tests verify workflow completes with COMPLETED state
+
+**Files changed:**
+- src/main/java/com/temporal/jetstream/model/Flight.java (created)
+- src/main/java/com/temporal/jetstream/model/FlightState.java (created)
+- src/main/java/com/temporal/jetstream/workflow/FlightWorkflow.java (created)
+- src/main/java/com/temporal/jetstream/workflow/FlightWorkflowImpl.java (created)
+- src/main/java/com/temporal/jetstream/config/TemporalConfig.java (created)
+- src/test/java/com/temporal/jetstream/workflow/FlightWorkflowTest.java (created)
+- prd.json (updated story-2 passes: true)
+
+**Learnings for future iterations:**
+- Workflow implementations must be deterministic - use Workflow.sleep() not Thread.sleep()
+- Use Workflow.getLogger() for logging within workflows, not standard loggers
+- TestWorkflowExtension provides cleaner test setup with automatic worker registration
+- WorkflowId format should be 'flight-{flightNumber}-{flightDate}' for uniqueness
+- TemporalConfig uses @PostConstruct to start worker after Spring context initialization
+- Worker logs 'Worker started for task queue: flight-task-queue' on successful startup
+- Unit tests complete quickly (~1.3 seconds) using in-memory test server
+- Application startup shows 'Registered FlightWorkflowImpl for task queue: flight-task-queue'
+- FlightWorkflowImpl doesn't need @Workflow annotation (interface is sufficient)
+- Flight domain model initializes with SCHEDULED state and 0 delay by default
+
+---
