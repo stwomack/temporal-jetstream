@@ -558,3 +558,95 @@
 - Manual testing with kafka-console-producer is documented in README for verification
 
 ---
+## 2026-01-26 14:51 - story-11
+
+**What was implemented:**
+- Added comprehensive Architecture & Value Proposition section to README:
+  - ASCII architecture diagram showing integration flow: External Systems → Kafka → Flink/Temporal → Downstream Systems
+  - Detailed explanation of how Temporal complements Kafka (event streaming) and Flink (analytics)
+  - The Four 'ilities section with demo features and real-world value:
+    - Durability: Workflows survive failures (demo: Simulate Failure button)
+    - Reliability: Guaranteed multi-step execution (demo: Complete flight lifecycle)
+    - Consistency: Complete audit trail (demo: View Audit Trail with timeline)
+    - Scalability: Independent workflow instances (demo: Multiple concurrent flights)
+  - Key technical benefits: Event-driven integration, state management, failure handling, observability
+- Created Complete Demo Script (5-10 minutes) with 8 steps:
+  - Step 1: Verify all services (Temporal, Docker, application)
+  - Step 2: Start flight workflow (via UI and REST API with examples)
+  - Step 3: Send events (delays, gate changes) with UI and API instructions
+  - Step 4: Query flight state with curl examples
+  - Step 5: Demonstrate failure recovery with DEMO flights and worker restart
+  - Step 6: View complete audit trail with timeline and export
+  - Step 7: Test Kafka integration with console producer commands
+  - Step 8: Test multi-leg journey with 3-flight example
+  - Additional exploration section with Temporal Web UI, cancellation, Kafka monitoring
+- Added Contributing section with:
+  - Development setup (fork, branch, test, commit, PR)
+  - Areas for contribution: features, improvements, bug fixes with specific examples
+  - Code style guidelines
+  - Links to GitHub Issues and Temporal community
+- Enhanced Troubleshooting section:
+  - Application won't start (existing)
+  - Docker services won't start (existing)
+  - Tests failing (new - how to skip Kafka integration tests)
+  - Kafka consumer not receiving messages (new - verification steps)
+- Created LICENSE file with MIT License
+- Created AGENTS.md file (comprehensive learnings document) with:
+  - Codebase Patterns section consolidating key conventions
+  - Technology stack details (Spring Boot 4.0.1, Java 21, Temporal 1.32.1)
+  - Project structure diagram
+  - Temporal workflow patterns: interface, implementation, worker registration, WorkflowId format
+  - Spring Kafka integration patterns: consumer, event format, error handling
+  - WebSocket real-time update patterns with STOMP
+  - REST API patterns for starting workflows, sending signals, querying state
+  - Testing patterns with TestWorkflowEnvironment and @ExtendWith
+  - Common Gotchas section with 10+ important patterns:
+    - Workflow determinism (never use Thread.sleep, System.currentTimeMillis, new Random)
+    - Worker startup (must call workerFactory.start())
+    - Child workflows (use Workflow.newChildWorkflowStub, ParentClosePolicy)
+    - Signal handling (asynchronous, lightweight, idempotent)
+    - Query methods (read-only, immediate return, strongly consistent)
+    - Workflow history (fetch with blockingStub, namespace must match)
+  - Build & Test Commands reference
+  - Development Workflow with terminal commands
+  - Key Dependencies with full pom.xml snippets
+  - Architecture Decisions explaining why Temporal, why Kafka, why WebSocket
+  - Future Enhancement Ideas (activities, advanced workflows, observability, production readiness)
+  - References to official documentation
+
+**Files changed:**
+- README.md (enhanced from 614 lines to 1242 lines - comprehensive production-ready documentation)
+- LICENSE (created - MIT License)
+- AGENTS.md (created - 479 lines of learnings and patterns)
+- prd.json (updated story-11 passes: true)
+
+**Learnings for future iterations:**
+- Architecture diagrams are critical for understanding system design - ASCII art works well in markdown
+- Value propositions should map directly to demo features (makes it concrete and testable)
+- Demo scripts should be step-by-step with both UI and API instructions
+- Include expected results after each step so users can verify success
+- curl examples are essential for API documentation
+- Contributing section encourages community involvement
+- AGENTS.md is invaluable for future development - consolidates all learnings in one place
+- Document common gotchas prominently - saves hours of debugging
+- Testing patterns should include how to skip flaky tests (like embedded Kafka)
+- Architecture decisions section explains "why" not just "what" - helps with maintenance
+- Future enhancement ideas guide contributors toward valuable improvements
+- Links to official documentation help users go deeper
+- README at 1242 lines is comprehensive but well-organized with clear sections
+- MIT License is standard for open-source demo projects
+- Complete documentation makes project more professional and maintainable
+- Step-by-step demo script should take 5-10 minutes (as specified in PRD)
+- Demo script validates all key features work end-to-end
+- Troubleshooting section prevents common support requests
+- Code style guidelines ensure consistent contributions
+- Architecture diagram should show data flow, not just components
+- The Four 'ilities (durability, reliability, consistency, scalability) are Temporal's core value props
+- Each value prop should have: definition, demo feature, real-world value
+- AGENTS.md patterns section consolidates knowledge from progress.txt
+- Include both positive patterns (do this) and negative patterns (don't do this)
+- Build/test commands should be copy-pasteable
+- Development workflow should show parallel terminal commands
+- Project is now fully documented and ready for demo/production evaluation
+
+---
