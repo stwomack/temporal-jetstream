@@ -14,6 +14,8 @@ public class Flight {
     private String gate;
     private String aircraft;
     private int delay; // in minutes
+    private String previousFlightNumber;
+    private String nextFlightNumber;
 
     public Flight() {
         this.currentState = FlightState.SCHEDULED;
@@ -114,6 +116,22 @@ public class Flight {
 
     public void setDelay(int delay) {
         this.delay = delay;
+    }
+
+    public String getPreviousFlightNumber() {
+        return previousFlightNumber;
+    }
+
+    public void setPreviousFlightNumber(String previousFlightNumber) {
+        this.previousFlightNumber = previousFlightNumber;
+    }
+
+    public String getNextFlightNumber() {
+        return nextFlightNumber;
+    }
+
+    public void setNextFlightNumber(String nextFlightNumber) {
+        this.nextFlightNumber = nextFlightNumber;
     }
 
     @Override

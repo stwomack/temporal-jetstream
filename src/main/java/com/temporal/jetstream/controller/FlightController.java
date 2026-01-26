@@ -4,6 +4,7 @@ import com.temporal.jetstream.dto.*;
 import com.temporal.jetstream.model.Flight;
 import com.temporal.jetstream.model.FlightState;
 import com.temporal.jetstream.workflow.FlightWorkflow;
+import com.temporal.jetstream.workflow.MultiLegFlightWorkflow;
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowNotFoundException;
 import io.temporal.client.WorkflowOptions;
@@ -16,6 +17,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/flights")
 public class FlightController {
@@ -27,6 +31,64 @@ public class FlightController {
 
     @Value("${temporal.task-queue}")
     private String taskQueue;
+
+    @PostMapping("/journey")
+    public ResponseEntity<?> startJourney(@Valid @RequestBody StartJourneyRequest request) {
+        try {
+            // Create Flight objects from request
+            List<Flight> flights = new ArrayList<>();
+            for (int i = 0; i < request.getFlights().size(); i++) {
+                StartFlightRequest flightRequest = request.getFlights().get(i);
+                Flight flight = new Flight(
+                        flightRequest.getFlightNumber(),
+                        flightRequest.getFlightDate(),
+                        flightRequest.getDepartureStation(),
+                        flightRequest.getArrivalStation(),
+                        flightRequest.getScheduledDeparture(),
+                        flightRequest.getScheduledArrival(),
+                        flightRequest.getGate(),
+                        flightRequest.getAircraft()
+                );
+
+                // Set linkage between flights
+                if (i > 0) {
+                    flight.setPreviousFlightNumber(request.getFlights().get(i - 1).getFlightNumber());
+                }
+                if (i < request.getFlights().size() - 1) {
+                    flight.setNextFlightNumber(request.getFlights().get(i + 1).getFlightNumber());
+                }
+
+                flights.add(flight);
+            }
+
+            // Generate workflow ID
+            String workflowId = String.format("journey-%s", request.getJourneyId());
+
+            // Create workflow options
+            WorkflowOptions options = WorkflowOptions.newBuilder()
+                    .setWorkflowId(workflowId)
+                    .setTaskQueue(taskQueue)
+                    .build();
+
+            // Start multi-leg workflow asynchronously
+            MultiLegFlightWorkflow workflow = workflowClient.newWorkflowStub(MultiLegFlightWorkflow.class, options);
+            WorkflowClient.start(workflow::executeJourney, flights);
+
+            logger.info("Started multi-leg journey workflow: {} with {} legs, ID: {}",
+                    request.getJourneyId(), flights.size(), workflowId);
+
+            return ResponseEntity.ok(new StartJourneyResponse(
+                    workflowId,
+                    request.getJourneyId(),
+                    flights.size()
+            ));
+
+        } catch (Exception e) {
+            logger.error("Error starting journey workflow: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ErrorResponse("WORKFLOW_START_ERROR", e.getMessage()));
+        }
+    }
 
     @PostMapping("/start")
     public ResponseEntity<?> startFlight(@Valid @RequestBody StartFlightRequest request) {

@@ -2,6 +2,7 @@ package com.temporal.jetstream.config;
 
 import com.temporal.jetstream.workflow.FlightWorkflow;
 import com.temporal.jetstream.workflow.FlightWorkflowImpl;
+import com.temporal.jetstream.workflow.MultiLegFlightWorkflowImpl;
 import io.temporal.client.WorkflowClient;
 import io.temporal.serviceclient.WorkflowServiceStubs;
 import io.temporal.worker.Worker;
@@ -43,8 +44,8 @@ public class TemporalConfig {
     @Bean
     public Worker worker(WorkerFactory workerFactory) {
         Worker worker = workerFactory.newWorker(taskQueue);
-        worker.registerWorkflowImplementationTypes(FlightWorkflowImpl.class);
-        logger.info("Registered FlightWorkflowImpl for task queue: {}", taskQueue);
+        worker.registerWorkflowImplementationTypes(FlightWorkflowImpl.class, MultiLegFlightWorkflowImpl.class);
+        logger.info("Registered FlightWorkflowImpl and MultiLegFlightWorkflowImpl for task queue: {}", taskQueue);
         return worker;
     }
 
