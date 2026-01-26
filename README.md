@@ -530,6 +530,191 @@ Unlike application logs that can be lost or rotated:
 
 For airline operations handling millions of dollars in assets and customer commitments, having a complete audit trail of every flight decision is invaluable for both operational excellence and regulatory compliance.
 
+## Kafka Integration for Event Ingestion
+
+The application demonstrates how Temporal complements existing streaming architectures by integrating with Apache Kafka. Flight events published to Kafka topics are automatically consumed and translated into workflow signals, enabling event-driven workflow orchestration.
+
+### Architecture Overview
+
+```
+External Systems → Kafka (flight-events topic) → FlightEventConsumer → Temporal Workflow Signals → Flight State Updates
+```
+
+This integration shows how:
+- **Kafka** handles high-throughput event streaming from external systems (radar, gate systems, crew apps)
+- **Temporal** provides durable orchestration of multi-step flight processes
+- **Together** they create a robust event-driven architecture where events drive workflow state machines
+
+### Supported Event Types
+
+The system maps Kafka events to workflow signals:
+
+| Kafka Event Type | Workflow Signal | Description |
+|-----------------|----------------|-------------|
+| `DELAY_ANNOUNCED` | `announceDelay(minutes)` | Flight delay notification |
+| `GATE_CHANGED` | `changeGate(newGate)` | Gate reassignment |
+| `GATE_ASSIGNED` | `changeGate(gate)` | Initial gate assignment |
+| `FLIGHT_CANCELLED` | `cancelFlight(reason)` | Flight cancellation |
+
+### Event Message Format
+
+Events published to the `flight-events` topic should follow this JSON schema:
+
+```json
+{
+  "eventType": "DELAY_ANNOUNCED",
+  "flightNumber": "AA1234",
+  "flightDate": "2026-01-26",
+  "data": "{\"delayMinutes\": 45}"
+}
+```
+
+#### Example Events
+
+**Delay Announcement:**
+```json
+{
+  "eventType": "DELAY_ANNOUNCED",
+  "flightNumber": "AA1234",
+  "flightDate": "2026-01-26",
+  "data": "{\"delayMinutes\": 45}"
+}
+```
+
+**Gate Change:**
+```json
+{
+  "eventType": "GATE_CHANGED",
+  "flightNumber": "AA1234",
+  "flightDate": "2026-01-26",
+  "data": "{\"gate\": \"C12\"}"
+}
+```
+
+**Flight Cancellation:**
+```json
+{
+  "eventType": "FLIGHT_CANCELLED",
+  "flightNumber": "AA1234",
+  "flightDate": "2026-01-26",
+  "data": "{\"reason\": \"Weather conditions\"}"
+}
+```
+
+### Testing Kafka Integration
+
+#### Manually Publishing Events
+
+You can use the Kafka console producer to manually publish test events:
+
+```bash
+# Connect to Kafka container
+docker exec -it temporal-jetstream-kafka-1 /bin/bash
+
+# Produce a test event
+kafka-console-producer --broker-list localhost:9092 --topic flight-events
+
+# Then paste an event (Ctrl+D to exit):
+{"eventType":"DELAY_ANNOUNCED","flightNumber":"AA1234","flightDate":"2026-01-26","data":"{\"delayMinutes\":30}"}
+```
+
+#### Monitoring Kafka Messages
+
+To see messages being consumed from the flight-events topic:
+
+```bash
+# View messages in the flight-events topic
+docker exec -it temporal-jetstream-kafka-1 kafka-console-consumer \
+  --bootstrap-server localhost:9092 \
+  --topic flight-events \
+  --from-beginning
+```
+
+#### Running Integration Tests
+
+The project includes comprehensive Kafka integration tests:
+
+```bash
+# Run all Kafka integration tests
+./mvnw test -Dtest=KafkaIntegrationTest
+
+# Run specific test
+./mvnw test -Dtest=KafkaIntegrationTest#testDelayEventFromKafka
+```
+
+These tests use **EmbeddedKafka** for fast, isolated testing without external dependencies.
+
+### How It Works
+
+1. **FlightEventConsumer** listens to the `flight-events` Kafka topic using `@KafkaListener`
+2. When an event arrives, it's deserialized from JSON into a `FlightEvent` object
+3. The consumer extracts the event type and relevant data (delay minutes, gate, reason)
+4. Based on event type, the consumer gets the workflow stub using the flight number and date
+5. The appropriate signal method is called on the workflow (`announceDelay`, `changeGate`, `cancelFlight`)
+6. The workflow processes the signal and updates its state accordingly
+7. State changes are broadcast to the WebSocket clients for real-time UI updates
+
+### Application Logs
+
+When Kafka events are processed, you'll see logs like:
+
+```
+INFO  - Received Kafka message: {"eventType":"DELAY_ANNOUNCED",...}
+INFO  - Received Kafka event: DELAY_ANNOUNCED for flight AA1234
+INFO  - Sent announceDelay signal to workflow flight-AA1234-2026-01-26 with 45 minutes
+```
+
+### Error Handling
+
+The consumer handles several error scenarios gracefully:
+
+- **Deserialization errors** - Logged with original message for debugging
+- **Workflow not found** - Logged as error (flight workflow must be started before events)
+- **Missing data fields** - Defaults to safe values (0 delay, empty gate, "Unknown reason")
+- **Duplicate messages** - Signals are idempotent, safe to receive multiple times
+
+### Integration with Flink
+
+In a complete architecture, you might have:
+
+```
+Flight Events → Kafka
+                  ↓
+                Flink (Stream Processing)
+                  ↓
+            Metrics & Analytics (Kafka topic)
+                  ↓
+            Temporal (Orchestration)
+                  ↓
+            Downstream Systems
+```
+
+Where:
+- **Flink** processes events for real-time metrics, aggregations, and pattern detection
+- **Temporal** orchestrates long-running flight processes with durable state
+- **Kafka** ties everything together as the event backbone
+
+This demo focuses on the Temporal orchestration piece, showing how it complements (not replaces) streaming analytics.
+
+### Why This Integration Matters
+
+**Event-Driven Architecture**
+- External systems can publish events without knowing about Temporal
+- Loose coupling between event producers and workflow orchestration
+- Kafka provides buffering and replay capabilities
+
+**Idempotent Processing**
+- Workflow signals are designed to be idempotent
+- Safe to reprocess Kafka messages after consumer restarts
+- No duplicate signal execution issues
+
+**Temporal Complements Kafka**
+- Kafka: High-throughput, low-latency event streaming
+- Temporal: Durable, reliable, multi-step process orchestration
+- Together: Event-driven workflows that survive failures
+
+For airlines, this means gate systems can publish events to Kafka, and those events automatically drive flight workflows without tight coupling or complex state management.
+
 ## Verifying the Setup
 
 Once all services are running, you should see:
