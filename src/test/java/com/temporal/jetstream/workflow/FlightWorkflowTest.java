@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FlightWorkflowTest {
 
@@ -93,6 +94,195 @@ class FlightWorkflowTest {
             // Verify workflow ID can be retrieved
             WorkflowStub untypedStub = WorkflowStub.fromTyped(workflow);
             assertEquals(workflowId, untypedStub.getExecution().getWorkflowId());
+        } finally {
+            testEnv.close();
+        }
+    }
+
+    @Test
+    void testAnnounceDelaySignal() {
+        TestWorkflowEnvironment testEnv = TestWorkflowEnvironment.newInstance();
+        Worker worker = testEnv.newWorker("flight-task-queue");
+        worker.registerWorkflowImplementationTypes(FlightWorkflowImpl.class);
+        testEnv.start();
+
+        try {
+            Flight flight = new Flight(
+                    "DL9999",
+                    LocalDate.now(),
+                    "JFK",
+                    "LAX",
+                    LocalDateTime.now().plusHours(2),
+                    LocalDateTime.now().plusHours(6),
+                    "C10",
+                    "N99999"
+            );
+
+            String workflowId = "flight-DL9999-test-delay";
+            WorkflowOptions options = WorkflowOptions.newBuilder()
+                    .setTaskQueue("flight-task-queue")
+                    .setWorkflowId(workflowId)
+                    .build();
+
+            FlightWorkflow workflow = testEnv.getWorkflowClient()
+                    .newWorkflowStub(FlightWorkflow.class, options);
+
+            // Start workflow asynchronously
+            WorkflowStub untypedStub = WorkflowStub.fromTyped(workflow);
+            untypedStub.start(flight);
+
+            // Send delay signal
+            workflow.announceDelay(45);
+
+            // Wait for workflow to complete
+            Flight result = untypedStub.getResult(Flight.class);
+
+            // Verify delay was recorded
+            assertNotNull(result);
+            assertEquals(45, result.getDelay());
+            assertEquals(FlightState.COMPLETED, result.getCurrentState());
+        } finally {
+            testEnv.close();
+        }
+    }
+
+    @Test
+    void testChangeGateSignal() {
+        TestWorkflowEnvironment testEnv = TestWorkflowEnvironment.newInstance();
+        Worker worker = testEnv.newWorker("flight-task-queue");
+        worker.registerWorkflowImplementationTypes(FlightWorkflowImpl.class);
+        testEnv.start();
+
+        try {
+            Flight flight = new Flight(
+                    "SW1111",
+                    LocalDate.now(),
+                    "DEN",
+                    "PHX",
+                    LocalDateTime.now().plusHours(1),
+                    LocalDateTime.now().plusHours(3),
+                    "D5",
+                    "N11111"
+            );
+
+            String workflowId = "flight-SW1111-test-gate";
+            WorkflowOptions options = WorkflowOptions.newBuilder()
+                    .setTaskQueue("flight-task-queue")
+                    .setWorkflowId(workflowId)
+                    .build();
+
+            FlightWorkflow workflow = testEnv.getWorkflowClient()
+                    .newWorkflowStub(FlightWorkflow.class, options);
+
+            // Start workflow asynchronously
+            WorkflowStub untypedStub = WorkflowStub.fromTyped(workflow);
+            untypedStub.start(flight);
+
+            // Send gate change signal
+            workflow.changeGate("D15");
+
+            // Wait for workflow to complete
+            Flight result = untypedStub.getResult(Flight.class);
+
+            // Verify gate was changed
+            assertNotNull(result);
+            assertEquals("D15", result.getGate());
+            assertEquals(FlightState.COMPLETED, result.getCurrentState());
+        } finally {
+            testEnv.close();
+        }
+    }
+
+    @Test
+    void testCancelFlightSignal() {
+        TestWorkflowEnvironment testEnv = TestWorkflowEnvironment.newInstance();
+        Worker worker = testEnv.newWorker("flight-task-queue");
+        worker.registerWorkflowImplementationTypes(FlightWorkflowImpl.class);
+        testEnv.start();
+
+        try {
+            Flight flight = new Flight(
+                    "BA7777",
+                    LocalDate.now(),
+                    "BOS",
+                    "MIA",
+                    LocalDateTime.now().plusHours(3),
+                    LocalDateTime.now().plusHours(6),
+                    "E20",
+                    "N77777"
+            );
+
+            String workflowId = "flight-BA7777-test-cancel";
+            WorkflowOptions options = WorkflowOptions.newBuilder()
+                    .setTaskQueue("flight-task-queue")
+                    .setWorkflowId(workflowId)
+                    .build();
+
+            FlightWorkflow workflow = testEnv.getWorkflowClient()
+                    .newWorkflowStub(FlightWorkflow.class, options);
+
+            // Start workflow asynchronously
+            WorkflowStub untypedStub = WorkflowStub.fromTyped(workflow);
+            untypedStub.start(flight);
+
+            // Send cancel signal early in the workflow
+            workflow.cancelFlight("Weather conditions");
+
+            // Wait for workflow to complete
+            Flight result = untypedStub.getResult(Flight.class);
+
+            // Verify flight was cancelled
+            assertNotNull(result);
+            assertEquals(FlightState.CANCELLED, result.getCurrentState());
+        } finally {
+            testEnv.close();
+        }
+    }
+
+    @Test
+    void testMultipleSignals() {
+        TestWorkflowEnvironment testEnv = TestWorkflowEnvironment.newInstance();
+        Worker worker = testEnv.newWorker("flight-task-queue");
+        worker.registerWorkflowImplementationTypes(FlightWorkflowImpl.class);
+        testEnv.start();
+
+        try {
+            Flight flight = new Flight(
+                    "AA2222",
+                    LocalDate.now(),
+                    "ATL",
+                    "SEA",
+                    LocalDateTime.now().plusHours(2),
+                    LocalDateTime.now().plusHours(7),
+                    "F8",
+                    "N22222"
+            );
+
+            String workflowId = "flight-AA2222-test-multi";
+            WorkflowOptions options = WorkflowOptions.newBuilder()
+                    .setTaskQueue("flight-task-queue")
+                    .setWorkflowId(workflowId)
+                    .build();
+
+            FlightWorkflow workflow = testEnv.getWorkflowClient()
+                    .newWorkflowStub(FlightWorkflow.class, options);
+
+            // Start workflow asynchronously
+            WorkflowStub untypedStub = WorkflowStub.fromTyped(workflow);
+            untypedStub.start(flight);
+
+            // Send multiple signals
+            workflow.announceDelay(30);
+            workflow.changeGate("F12");
+
+            // Wait for workflow to complete
+            Flight result = untypedStub.getResult(Flight.class);
+
+            // Verify all signal changes were applied
+            assertNotNull(result);
+            assertEquals(30, result.getDelay());
+            assertEquals("F12", result.getGate());
+            assertEquals(FlightState.COMPLETED, result.getCurrentState());
         } finally {
             testEnv.close();
         }

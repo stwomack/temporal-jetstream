@@ -11,29 +11,72 @@ public class FlightWorkflowImpl implements FlightWorkflow {
 
     private static final Logger logger = Workflow.getLogger(FlightWorkflowImpl.class);
 
+    // Instance variables to track signal data
+    private int delayMinutes = 0;
+    private String currentGate = null;
+    private boolean cancelled = false;
+    private String cancellationReason = null;
+
     @Override
     public Flight executeFlight(Flight flight) {
         logger.info("Starting flight workflow for: {}", flight.getFlightNumber());
+
+        // Initialize gate if provided
+        if (flight.getGate() != null) {
+            currentGate = flight.getGate();
+        }
 
         // SCHEDULED -> BOARDING
         flight.setCurrentState(FlightState.SCHEDULED);
         logger.info("Flight {} is SCHEDULED", flight.getFlightNumber());
         Workflow.sleep(Duration.ofSeconds(2));
 
+        // Check for cancellation
+        if (cancelled) {
+            flight.setCurrentState(FlightState.CANCELLED);
+            logger.info("Flight {} was CANCELLED: {}", flight.getFlightNumber(), cancellationReason);
+            updateFlightWithSignalData(flight);
+            return flight;
+        }
+
         // BOARDING
         flight.setCurrentState(FlightState.BOARDING);
         logger.info("Flight {} is BOARDING", flight.getFlightNumber());
         Workflow.sleep(Duration.ofSeconds(2));
+
+        // Check for cancellation
+        if (cancelled) {
+            flight.setCurrentState(FlightState.CANCELLED);
+            logger.info("Flight {} was CANCELLED: {}", flight.getFlightNumber(), cancellationReason);
+            updateFlightWithSignalData(flight);
+            return flight;
+        }
 
         // DEPARTED
         flight.setCurrentState(FlightState.DEPARTED);
         logger.info("Flight {} has DEPARTED", flight.getFlightNumber());
         Workflow.sleep(Duration.ofSeconds(2));
 
+        // Check for cancellation
+        if (cancelled) {
+            flight.setCurrentState(FlightState.CANCELLED);
+            logger.info("Flight {} was CANCELLED: {}", flight.getFlightNumber(), cancellationReason);
+            updateFlightWithSignalData(flight);
+            return flight;
+        }
+
         // IN_FLIGHT
         flight.setCurrentState(FlightState.IN_FLIGHT);
         logger.info("Flight {} is IN_FLIGHT", flight.getFlightNumber());
         Workflow.sleep(Duration.ofSeconds(2));
+
+        // Check for cancellation
+        if (cancelled) {
+            flight.setCurrentState(FlightState.CANCELLED);
+            logger.info("Flight {} was CANCELLED: {}", flight.getFlightNumber(), cancellationReason);
+            updateFlightWithSignalData(flight);
+            return flight;
+        }
 
         // LANDED
         flight.setCurrentState(FlightState.LANDED);
@@ -44,6 +87,37 @@ public class FlightWorkflowImpl implements FlightWorkflow {
         flight.setCurrentState(FlightState.COMPLETED);
         logger.info("Flight {} is COMPLETED", flight.getFlightNumber());
 
+        // Update flight with any signal data received during execution
+        updateFlightWithSignalData(flight);
+
         return flight;
+    }
+
+    @Override
+    public void announceDelay(int minutes) {
+        delayMinutes = minutes;
+        logger.info("Received signal: announceDelay, delay={} minutes", minutes);
+    }
+
+    @Override
+    public void changeGate(String newGate) {
+        currentGate = newGate;
+        logger.info("Received signal: changeGate, gate={}", newGate);
+    }
+
+    @Override
+    public void cancelFlight(String reason) {
+        cancelled = true;
+        cancellationReason = reason;
+        logger.info("Received signal: cancelFlight, reason={}", reason);
+    }
+
+    private void updateFlightWithSignalData(Flight flight) {
+        if (delayMinutes > 0) {
+            flight.setDelay(delayMinutes);
+        }
+        if (currentGate != null) {
+            flight.setGate(currentGate);
+        }
     }
 }
