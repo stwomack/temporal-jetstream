@@ -127,3 +127,44 @@
 - Cancellation checks after each Workflow.sleep() ensure timely response to cancel signals
 
 ---
+## 2026-01-26 14:02 - story-4
+
+**What was implemented:**
+- Added three @QueryMethod annotations to FlightWorkflow interface:
+  - getCurrentState() - Returns current FlightState enum value
+  - getFlightDetails() - Returns complete Flight object with all current data
+  - getDelayMinutes() - Returns current delay in minutes (0 if not delayed)
+- Implemented query methods in FlightWorkflowImpl:
+  - Added currentFlight instance variable to track flight state for queries
+  - getCurrentState() returns the current state from currentFlight
+  - getFlightDetails() creates a new Flight object with current state plus signal data (delay, gate)
+  - getDelayMinutes() returns the delayMinutes instance variable
+- Created comprehensive unit tests for all query methods:
+  - testGetCurrentStateQuery - Verifies state can be queried during execution
+  - testGetFlightDetailsQuery - Verifies complete details can be queried, including signal changes
+  - testGetDelayMinutesQuery - Verifies delay can be queried before/after signal
+  - testQueriesWithSignalsIntegration - Integration test showing queries work with signals
+- Updated README.md with query examples and documentation:
+  - Added "Querying Flight State" section with code examples
+  - Documented query methods and key features (non-blocking, read-only, real-time, consistent)
+
+**Files changed:**
+- src/main/java/com/temporal/jetstream/workflow/FlightWorkflow.java (added 3 @QueryMethod annotations)
+- src/main/java/com/temporal/jetstream/workflow/FlightWorkflowImpl.java (added currentFlight variable and 3 query method implementations)
+- src/test/java/com/temporal/jetstream/workflow/FlightWorkflowTest.java (added 4 new query tests)
+- README.md (added "Querying Flight State" section)
+- prd.json (updated story-4 passes: true)
+
+**Learnings for future iterations:**
+- Query methods must NOT modify workflow state - they are read-only
+- Queries are synchronous and return immediately without blocking workflow execution
+- Query methods return strongly consistent data with the workflow's current execution state
+- getFlightDetails() creates a new Flight object to avoid returning internal mutable state
+- Queries can be called on running workflows to inspect state in real-time
+- Query results reflect signal changes immediately (e.g., after announceDelay signal, getDelayMinutes returns updated value)
+- All 10 tests pass (6 original + 4 new query tests) in ~4.5 seconds
+- TestWorkflowEnvironment makes queries execute very fast, so workflows may complete before queries in tests
+- Instance variables (currentFlight, delayMinutes) are safe to use in query methods since they're accessed synchronously
+- Query methods should be lightweight - no heavy computation or external calls
+
+---

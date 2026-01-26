@@ -137,7 +137,7 @@
       "id": "story-4",
       "title": "Query Support for Flight State Inspection",
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "description": "Add query methods to FlightWorkflow to inspect current flight state without blocking workflow execution",
       "acceptanceCriteria": [
         "@QueryMethod annotations added to FlightWorkflow interface for: getCurrentState(), getFlightDetails(), getDelayMinutes()",
