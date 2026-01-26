@@ -3,6 +3,7 @@ package com.temporal.jetstream.controller;
 import com.temporal.jetstream.dto.*;
 import com.temporal.jetstream.model.Flight;
 import com.temporal.jetstream.model.FlightState;
+import com.temporal.jetstream.service.FlightEventService;
 import com.temporal.jetstream.workflow.FlightWorkflow;
 import com.temporal.jetstream.workflow.MultiLegFlightWorkflow;
 import io.temporal.client.WorkflowClient;
@@ -28,6 +29,9 @@ public class FlightController {
 
     @Autowired
     private WorkflowClient workflowClient;
+
+    @Autowired
+    private FlightEventService flightEventService;
 
     @Value("${temporal.task-queue}")
     private String taskQueue;
@@ -122,6 +126,9 @@ public class FlightController {
 
             logger.info("Started flight workflow: {} with ID: {}", request.getFlightNumber(), workflowId);
 
+            // Publish event to WebSocket clients
+            flightEventService.publishStateChange(request.getFlightNumber(), FlightState.SCHEDULED, "Flight workflow started");
+
             return ResponseEntity.ok(new StartFlightResponse(
                     workflowId,
                     request.getFlightNumber(),
@@ -147,6 +154,11 @@ public class FlightController {
             workflow.announceDelay(request.getMinutes());
 
             logger.info("Sent delay signal to flight {}: {} minutes", flightNumber, request.getMinutes());
+
+            // Publish event to WebSocket clients
+            FlightWorkflow queryWorkflow = getWorkflowStub(workflowId);
+            Flight updatedFlight = queryWorkflow.getFlightDetails();
+            flightEventService.publishFlightUpdate(updatedFlight);
 
             return ResponseEntity.ok()
                     .body(new ErrorResponse("SUCCESS", String.format("Delay of %d minutes announced", request.getMinutes())));
@@ -175,6 +187,11 @@ public class FlightController {
 
             logger.info("Sent gate change signal to flight {}: {}", flightNumber, request.getNewGate());
 
+            // Publish event to WebSocket clients
+            FlightWorkflow queryWorkflow = getWorkflowStub(workflowId);
+            Flight updatedFlight = queryWorkflow.getFlightDetails();
+            flightEventService.publishFlightUpdate(updatedFlight);
+
             return ResponseEntity.ok()
                     .body(new ErrorResponse("SUCCESS", String.format("Gate changed to %s", request.getNewGate())));
 
@@ -201,6 +218,9 @@ public class FlightController {
             workflow.cancelFlight(request.getReason());
 
             logger.info("Sent cancel signal to flight {}: {}", flightNumber, request.getReason());
+
+            // Publish event to WebSocket clients
+            flightEventService.publishStateChange(flightNumber, FlightState.CANCELLED, "Flight cancelled: " + request.getReason());
 
             return ResponseEntity.ok()
                     .body(new ErrorResponse("SUCCESS", "Flight cancelled: " + request.getReason()));

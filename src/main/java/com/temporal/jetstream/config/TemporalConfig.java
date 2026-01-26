@@ -46,15 +46,12 @@ public class TemporalConfig {
         Worker worker = workerFactory.newWorker(taskQueue);
         worker.registerWorkflowImplementationTypes(FlightWorkflowImpl.class, MultiLegFlightWorkflowImpl.class);
         logger.info("Registered FlightWorkflowImpl and MultiLegFlightWorkflowImpl for task queue: {}", taskQueue);
-        return worker;
-    }
 
-    @PostConstruct
-    public void startWorker() {
-        if (workerFactory != null) {
-            workerFactory.start();
-            logger.info("Worker started for task queue: {}", taskQueue);
-        }
+        // Start the worker factory immediately after registration
+        workerFactory.start();
+        logger.info("Worker started for task queue: {}", taskQueue);
+
+        return worker;
     }
 
     @PreDestroy

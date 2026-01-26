@@ -62,6 +62,56 @@ docker-compose ps
 
 The application will start on `http://localhost:8080`.
 
+## Web UI
+
+The application includes an embedded web UI for real-time flight monitoring and control.
+
+### Accessing the UI
+
+Open your browser and navigate to:
+
+```
+http://localhost:8080
+```
+
+### UI Features
+
+The web interface provides:
+
+1. **Start New Flight** - Form to create new flight workflows with all required details
+2. **Active Flights List** - Real-time view of all active flights with current state
+3. **Flight Details Panel** - Detailed view of selected flight including:
+   - Current state (SCHEDULED, BOARDING, DEPARTED, IN_FLIGHT, LANDED, COMPLETED, CANCELLED)
+   - Route information (departure/arrival stations)
+   - Gate and aircraft assignments
+   - Delay information
+   - Scheduled times
+4. **Flight Operations** - Interactive buttons to:
+   - Announce delays
+   - Change gates
+   - Cancel flights
+5. **Event Log** - Real-time stream of flight events and state changes
+6. **WebSocket Connection Status** - Indicator showing real-time connection status
+
+### Real-time Updates
+
+The UI uses WebSocket (STOMP over SockJS) to receive real-time updates:
+- Flight state changes are pushed to the UI immediately
+- No page refresh needed to see updates
+- Event log shows all flight events as they occur
+- Connection automatically reconnects if interrupted
+
+### Using the UI
+
+1. **Start a flight**: Fill in the form on the left panel and click "Start Flight"
+2. **View flight status**: Flights appear in the Active Flights panel on the right
+3. **Select a flight**: Click on any flight card to view detailed information
+4. **Perform operations**: Use the buttons in the Flight Details panel to:
+   - Click "Announce Delay" to add a delay (in minutes)
+   - Click "Change Gate" to update the gate assignment
+   - Click "Cancel Flight" to cancel the flight workflow
+5. **Monitor events**: Watch the Event Log panel for real-time updates
+
 ## REST API Endpoints
 
 The application provides REST endpoints to interact with flight workflows:
