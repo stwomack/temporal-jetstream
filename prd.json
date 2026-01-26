@@ -215,7 +215,7 @@
       "id": "story-7",
       "title": "Embedded Web UI with Real-time Updates",
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "description": "Create embedded web UI that displays flight state and updates in real-time using WebSockets or SSE",
       "acceptanceCriteria": [
         "Static HTML/CSS/JS files in src/main/resources/static serve UI at http://localhost:8080",

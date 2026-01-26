@@ -273,3 +273,63 @@
 - All 15 tests pass (10 from FlightWorkflowTest + 5 from MultiLegFlightWorkflowTest)
 
 ---
+## 2026-01-26 14:29 - story-7
+
+**What was implemented:**
+- Created WebSocketConfig class for real-time communication:
+  - Configured STOMP messaging protocol over WebSocket with SockJS fallback
+  - Enabled simple in-memory message broker for broadcasting to clients
+  - WebSocket endpoint at /ws for client connections
+- Implemented FlightEventService to publish flight state changes:
+  - publishFlightUpdate(Flight) sends complete flight details to /topic/flights
+  - publishStateChange() sends event notifications to /topic/flight-events
+  - Autowired SimpMessagingTemplate for WebSocket message broadcasting
+- Updated FlightController to publish events after operations:
+  - Added FlightEventService injection
+  - Publishing flight updates after delay, gate change, and cancel signals
+  - Publishing state change events when flights start
+- Fixed TemporalConfig worker startup issue:
+  - Moved workerFactory.start() directly into worker() @Bean method
+  - Removed @PostConstruct that wasn't firing due to timing issues
+  - Worker now starts immediately after registration
+- Created comprehensive web UI with three static files:
+  - index.html: Bootstrap-based UI with flight list, details panel, modals, and event log
+  - styles.css: Custom styling for flight cards, state badges, and animations
+  - app.js: WebSocket connection handling, API interactions, and real-time updates
+- Updated README with Web UI section including:
+  - Access instructions
+  - Feature list
+  - Real-time update explanation
+  - Step-by-step usage guide
+
+**Files changed:**
+- src/main/java/com/temporal/jetstream/config/WebSocketConfig.java (created)
+- src/main/java/com/temporal/jetstream/service/FlightEventService.java (created)
+- src/main/java/com/temporal/jetstream/config/TemporalConfig.java (fixed worker startup)
+- src/main/java/com/temporal/jetstream/controller/FlightController.java (added event publishing)
+- src/main/resources/static/index.html (created)
+- src/main/resources/static/styles.css (created)
+- src/main/resources/static/app.js (created)
+- README.md (added Web UI section)
+- prd.json (updated story-7 passes: true)
+
+**Learnings for future iterations:**
+- STOMP over WebSocket with SockJS provides excellent fallback support for older browsers
+- SimpMessagingTemplate from spring-messaging makes it trivial to broadcast to WebSocket topics
+- Spring Boot automatically serves static files from src/main/resources/static at root URL
+- index.html in static folder becomes the welcome page automatically
+- WorkerFactory.start() must be called for workers to poll for tasks - @PostConstruct timing can be problematic
+- Moving workerFactory.start() into the @Bean method ensures it fires after all dependencies are ready
+- WebSocket connection status is important for UX - users need to know if real-time updates are working
+- Bootstrap + vanilla JS provides a lightweight UI without heavy framework dependencies
+- SockJS client library provides WebSocket polyfill for maximum compatibility
+- STOMP.js provides clean abstraction over WebSocket protocol
+- Flight workflows complete very quickly (8 seconds with 2-second sleeps between states)
+- WebSocket publishes work best when called AFTER signals/operations complete
+- Query the workflow after signal to get updated state for WebSocket broadcast
+- All 15 tests still pass after UI implementation
+- UI is accessible at http://localhost:8080 once application starts
+- Real-time updates work immediately - no polling needed
+- WebSocket automatically reconnects after disconnection
+
+---
