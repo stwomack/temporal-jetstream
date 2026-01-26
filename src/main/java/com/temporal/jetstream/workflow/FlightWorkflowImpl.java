@@ -32,10 +32,15 @@ public class FlightWorkflowImpl implements FlightWorkflow {
             currentGate = flight.getGate();
         }
 
+        // Determine sleep duration - use longer duration for demo flights
+        Duration sleepDuration = flight.getFlightNumber().startsWith("DEMO")
+            ? Duration.ofSeconds(5)
+            : Duration.ofSeconds(2);
+
         // SCHEDULED -> BOARDING
         flight.setCurrentState(FlightState.SCHEDULED);
         logger.info("Flight {} is SCHEDULED", flight.getFlightNumber());
-        Workflow.sleep(Duration.ofSeconds(2));
+        Workflow.sleep(sleepDuration);
 
         // Check for cancellation
         if (cancelled) {
@@ -48,7 +53,7 @@ public class FlightWorkflowImpl implements FlightWorkflow {
         // BOARDING
         flight.setCurrentState(FlightState.BOARDING);
         logger.info("Flight {} is BOARDING", flight.getFlightNumber());
-        Workflow.sleep(Duration.ofSeconds(2));
+        Workflow.sleep(sleepDuration);
 
         // Check for cancellation
         if (cancelled) {
@@ -61,7 +66,7 @@ public class FlightWorkflowImpl implements FlightWorkflow {
         // DEPARTED
         flight.setCurrentState(FlightState.DEPARTED);
         logger.info("Flight {} has DEPARTED", flight.getFlightNumber());
-        Workflow.sleep(Duration.ofSeconds(2));
+        Workflow.sleep(sleepDuration);
 
         // Check for cancellation
         if (cancelled) {
@@ -74,7 +79,7 @@ public class FlightWorkflowImpl implements FlightWorkflow {
         // IN_FLIGHT
         flight.setCurrentState(FlightState.IN_FLIGHT);
         logger.info("Flight {} is IN_FLIGHT", flight.getFlightNumber());
-        Workflow.sleep(Duration.ofSeconds(2));
+        Workflow.sleep(sleepDuration);
 
         // Check for cancellation
         if (cancelled) {
@@ -87,7 +92,7 @@ public class FlightWorkflowImpl implements FlightWorkflow {
         // LANDED
         flight.setCurrentState(FlightState.LANDED);
         logger.info("Flight {} has LANDED", flight.getFlightNumber());
-        Workflow.sleep(Duration.ofSeconds(2));
+        Workflow.sleep(sleepDuration);
 
         // COMPLETED
         flight.setCurrentState(FlightState.COMPLETED);

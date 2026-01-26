@@ -323,6 +323,36 @@ async function cancelSelectedFlight() {
     }
 }
 
+// Simulate worker failure
+async function simulateFailure() {
+    if (!confirm('This will restart the Temporal worker to demonstrate failure recovery.\n\nActive workflows will pause and then resume automatically.\n\nContinue?')) {
+        return;
+    }
+
+    addEventLog('SYSTEM', 'ADMIN', 'Simulating worker failure...');
+
+    try {
+        const response = await fetch('/api/admin/restart-worker', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            addEventLog('SYSTEM', 'ADMIN', result.message);
+            alert('Worker restarted successfully! Workflows will continue from their last checkpoint.');
+        } else {
+            const error = await response.json();
+            alert('Error restarting worker: ' + error.message);
+            addEventLog('SYSTEM', 'ERROR', 'Failed to restart worker: ' + error.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error restarting worker: ' + error.message);
+        addEventLog('SYSTEM', 'ERROR', 'Failed to restart worker: ' + error.message);
+    }
+}
+
 // Event log
 function addEventLog(flightNumber, state, message) {
     const eventLog = document.getElementById('eventLog');

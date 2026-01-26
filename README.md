@@ -302,6 +302,91 @@ System.out.println("Updated delay: " + updatedDelay + " minutes"); // Output: 45
 
 See the test file `FlightWorkflowTest.java` for complete examples of querying workflow state.
 
+## Failure Recovery Demonstration
+
+One of Temporal's key value propositions is **durability** - workflows survive process restarts and continue execution from their last checkpoint. This demo includes features to showcase this capability.
+
+### Demonstrating Temporal's Durability
+
+The application includes a special endpoint and UI button to simulate a worker failure and demonstrate automatic recovery:
+
+#### Via Web UI
+
+1. Start a long-running demo flight (use flight number starting with "DEMO", e.g., "DEMO999") - these flights have 5-second delays between states for a total of ~25 seconds
+2. Watch the flight progress through states: SCHEDULED → BOARDING → DEPARTED → IN_FLIGHT → LANDED → COMPLETED
+3. While the flight is in progress, click the **"⚡ Simulate Failure"** button in the Active Flights panel
+4. The worker will stop and restart (simulating a crash and recovery)
+5. Watch the workflow automatically resume from its last checkpoint and continue to completion
+6. Check the Event Log to see system messages about the restart
+
+#### Via REST API
+
+Trigger a worker restart programmatically:
+
+```bash
+curl -X POST http://localhost:8080/api/admin/restart-worker
+```
+
+Response:
+```json
+{
+  "status": "SUCCESS",
+  "message": "Worker restarted successfully. Workflows will resume from last checkpoint."
+}
+```
+
+### What Happens During Worker Restart
+
+1. **Worker stops** - The Temporal worker process shuts down gracefully
+2. **Workflows pause** - Active workflows pause at their last checkpoint (after completing the current activity or timer)
+3. **Worker restarts** - A new worker process starts and registers with Temporal
+4. **Workflows resume** - All paused workflows automatically continue from their last checkpoint
+5. **No data loss** - All workflow state, variables, and history are preserved
+
+### Application Logs During Recovery
+
+You'll see logs similar to this:
+
+```
+INFO  - Stopping worker to simulate failure...
+INFO  - Worker stopped
+INFO  - Restarting worker...
+INFO  - Registered FlightWorkflowImpl and MultiLegFlightWorkflowImpl for task queue: flight-task-queue
+INFO  - Worker restarted. Workflows will resume from last checkpoint.
+INFO  - Flight DEMO999 is IN_FLIGHT (continues after restart)
+```
+
+### Key Durability Features Demonstrated
+
+- **Workflow State Persistence**: All workflow variables and execution state are preserved
+- **Signal History Preservation**: Signals sent before the restart (delays, gate changes) are retained
+- **Query Availability**: You can query workflow state even during and after restart
+- **Automatic Recovery**: No manual intervention needed - workflows just continue
+- **No Duplicate Execution**: Workflow logic doesn't re-execute completed steps
+
+### Testing Failure Recovery
+
+The project includes automated tests that simulate worker restarts:
+
+```bash
+./mvnw test -Dtest=FailureRecoveryTest
+```
+
+These tests verify:
+- Workflows complete successfully after worker restart
+- Workflow history is preserved across restarts
+- Signals sent before restart are retained
+
+### Why This Matters
+
+In production airline systems:
+- **Worker crashes** are inevitable (OOM, hardware failures, deployments)
+- **Long-running processes** (multi-hour flights) must survive restarts
+- **Critical state** (gate assignments, delays, passenger counts) cannot be lost
+- **Business continuity** requires workflows to resume automatically
+
+Temporal's durability guarantee means you can deploy new code, restart workers, or recover from failures without losing track of in-flight operations.
+
 ## Verifying the Setup
 
 Once all services are running, you should see:
