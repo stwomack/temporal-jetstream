@@ -1,0 +1,349 @@
+{
+  "title": "Temporal Jetstream - Airline Flight Lifecycle Orchestration Demo",
+  "branchName": "feature/temporal-jetstream",
+  "description": "A demonstration application showing how Temporal provides durability, reliability, scalability, and consistency for multi-day airline flight lifecycle orchestration. Complements existing Kafka/Flink streaming architecture by providing durable execution guarantees for long-running flight processes.",
+  "technicalContext": {
+    "stack": "Java 21, Spring Boot (latest stable), Temporal Java SDK (latest stable), Maven",
+    "infrastructure": [
+      "Temporal: Local dev server via 'temporal server start-dev' (NOT docker-compose)",
+      "Supporting services (Kafka, MongoDB): docker-compose.yml included",
+      "Embedded web UI with real-time updates (WebSockets or SSE)"
+    ],
+    "requirements": [
+      "All Spring dependencies must use LATEST STABLE versions - triple check versions before adding",
+      "Include Maven wrapper (mvnw/mvnw.cmd) in project root",
+      "Application runnable with: ./mvnw spring-boot:run",
+      "Docker-compose for Kafka and MongoDB only",
+      "README must include prerequisite: 'temporal server start-dev' running"
+    ]
+  },
+  "outOfScope": [
+    "Flink aggregations and real-time metrics (focus on orchestration, not stream processing)",
+    "SOLVER integration (mock it with simulated responses)",
+    "Production-grade database schema (in-memory or simple MongoDB is fine)",
+    "Multi-region deployment (single region is sufficient)",
+    "Comprehensive error handling for all edge cases",
+    "Authentication/authorization"
+  ],
+  "coreValueProps": [
+    "Durability: Flight state persists across worker restarts and failures",
+    "Reliability: Automatic retries and guaranteed execution of multi-step processes",
+    "Consistency: Complete audit trail of all state transitions via workflow history",
+    "Scalability: Each flight is an independent workflow, horizontally scalable"
+  ],
+  "domainModel": {
+    "flight": {
+      "flightNumber": "string (e.g., 'AA1234')",
+      "flightDate": "date",
+      "departureStation": "string (e.g., 'ORD')",
+      "arrivalStation": "string (e.g., 'DFW')",
+      "scheduledDeparture": "timestamp",
+      "scheduledArrival": "timestamp",
+      "currentState": "enum: SCHEDULED, BOARDING, DEPARTED, IN_FLIGHT, LANDED, COMPLETED, CANCELLED",
+      "gate": "string",
+      "aircraft": "string (tail number)",
+      "delay": "duration (minutes)"
+    },
+    "events": [
+      "FLIGHT_SCHEDULED",
+      "GATE_ASSIGNED",
+      "GATE_CHANGED",
+      "DELAY_ANNOUNCED",
+      "BOARDING_STARTED",
+      "DEPARTURE",
+      "ARRIVAL",
+      "FLIGHT_CANCELLED"
+    ]
+  },
+  "userStories": [
+    {
+      "id": "story-1",
+      "title": "Project Setup and Structure",
+      "priority": 1,
+      "passes": false,
+      "description": "Initialize Spring Boot project with Temporal SDK, Maven wrapper, and supporting services via docker-compose",
+      "acceptanceCriteria": [
+        "Project structure follows standard Spring Boot conventions (src/main/java, src/main/resources, src/test/java)",
+        "pom.xml includes LATEST STABLE versions of: Spring Boot, Temporal Java SDK, Spring WebSocket/SSE support",
+        "Maven wrapper (mvnw, mvnw.cmd) present in project root",
+        "docker-compose.yml includes Kafka (single broker) and MongoDB",
+        "Application.java with @SpringBootApplication boots successfully",
+        "application.yml configures Temporal connection to localhost:7233",
+        ".gitignore includes target/, .idea/, *.iml, .DS_Store",
+        "README.md includes: Prerequisites (Java 21, 'temporal server start-dev' running), Quick Start steps",
+        "./mvnw clean install runs successfully",
+        "./mvnw spring-boot:run starts application without errors"
+      ],
+      "technicalNotes": [
+        "Verify Spring Boot version is latest stable before adding to pom.xml",
+        "Temporal SDK version should be latest stable from Maven Central",
+        "Use spring-boot-starter-web, spring-boot-starter-websocket for real-time UI",
+        "Kafka/MongoDB versions in docker-compose should be recent stable releases"
+      ]
+    },
+    {
+      "id": "story-2",
+      "title": "Basic Flight Workflow Implementation",
+      "priority": 2,
+      "passes": false,
+      "description": "Create core FlightWorkflow that represents a flight's lifecycle with state transitions",
+      "acceptanceCriteria": [
+        "FlightWorkflow interface with @WorkflowInterface and @WorkflowMethod annotations",
+        "FlightWorkflowImpl implements workflow with basic state machine: SCHEDULED -> BOARDING -> DEPARTED -> IN_FLIGHT -> LANDED -> COMPLETED",
+        "Flight domain model class with fields: flightNumber, flightDate, departureStation, arrivalStation, scheduledDeparture, scheduledArrival, currentState, gate, aircraft, delay",
+        "FlightState enum with states: SCHEDULED, BOARDING, DEPARTED, IN_FLIGHT, LANDED, COMPLETED, CANCELLED",
+        "TemporalConfig @Configuration class that creates WorkflowClient and WorkerFactory beans",
+        "Worker registered to 'flight-task-queue' that polls for FlightWorkflow tasks",
+        "Worker starts when Spring Boot application starts",
+        "Unit test that creates workflow stub and executes workflow end-to-end (use TestWorkflowEnvironment)",
+        "Test verifies workflow completes successfully and final state is COMPLETED",
+        "./mvnw test passes",
+        "./mvnw spring-boot:run starts worker successfully and logs 'Worker started for task queue: flight-task-queue'"
+      ],
+      "technicalNotes": [
+        "Use @Workflow annotation for implementation class",
+        "Workflow method should accept Flight object as input",
+        "Use Workflow.sleep() to simulate time passage between states",
+        "Keep workflow logic deterministic (no random(), no System.currentTimeMillis())",
+        "Use WorkflowOptions to set WorkflowId as 'flight-{flightNumber}-{flightDate}'"
+      ]
+    },
+    {
+      "id": "story-3",
+      "title": "Signal Handling for Flight Events",
+      "priority": 3,
+      "passes": false,
+      "description": "Add signal methods to FlightWorkflow to handle out-of-order flight events (delays, gate changes, cancellations)",
+      "acceptanceCriteria": [
+        "@SignalMethod annotations added to FlightWorkflow interface for: announceDelay(int minutes), changeGate(String newGate), cancelFlight(String reason)",
+        "FlightWorkflowImpl implements signal handlers that update workflow state",
+        "announceDelay signal updates delay field and logs event",
+        "changeGate signal updates gate field and logs event",
+        "cancelFlight signal transitions state to CANCELLED and ends workflow execution",
+        "Signals can be received at any point during workflow execution",
+        "Unit test sends signals to running workflow and verifies state changes",
+        "Test verifies cancelFlight signal causes workflow to complete early with CANCELLED state",
+        "./mvnw test passes with signal tests",
+        "Application logs show signal handling: 'Received signal: announceDelay, delay=45 minutes'"
+      ],
+      "technicalNotes": [
+        "Use Workflow.await() with conditions to handle signals properly",
+        "Signals should be idempotent (safe to receive multiple times)",
+        "Store signal data in workflow instance variables",
+        "Signal handlers should not call Activities (keep them lightweight)"
+      ]
+    },
+    {
+      "id": "story-4",
+      "title": "Query Support for Flight State Inspection",
+      "priority": 4,
+      "passes": false,
+      "description": "Add query methods to FlightWorkflow to inspect current flight state without blocking workflow execution",
+      "acceptanceCriteria": [
+        "@QueryMethod annotations added to FlightWorkflow interface for: getCurrentState(), getFlightDetails(), getDelayMinutes()",
+        "getCurrentState returns current FlightState enum value",
+        "getFlightDetails returns complete Flight object with all current data",
+        "getDelayMinutes returns current delay in minutes (0 if not delayed)",
+        "Queries can be executed against running workflows without affecting execution",
+        "Unit test starts workflow, sends signals, then queries state to verify changes",
+        "Test verifies query results match expected state after signals",
+        "./mvnw test passes with query tests",
+        "README updated with example of querying flight state"
+      ],
+      "technicalNotes": [
+        "Queries must not modify workflow state",
+        "Queries are synchronous and return immediately",
+        "Query methods should be lightweight (no heavy computation)",
+        "Use workflow instance variables to return query results"
+      ]
+    },
+    {
+      "id": "story-5",
+      "title": "REST API for Workflow Operations",
+      "priority": 5,
+      "passes": false,
+      "description": "Create REST controller to start flights, send events, and query flight state via HTTP endpoints",
+      "acceptanceCriteria": [
+        "FlightController @RestController class with @RequestMapping('/api/flights')",
+        "POST /api/flights/start endpoint accepts Flight JSON and starts workflow (returns workflowId)",
+        "POST /api/flights/{flightNumber}/delay endpoint sends announceDelay signal",
+        "POST /api/flights/{flightNumber}/gate endpoint sends changeGate signal",
+        "POST /api/flights/{flightNumber}/cancel endpoint sends cancelFlight signal",
+        "GET /api/flights/{flightNumber}/state endpoint queries and returns current flight state",
+        "GET /api/flights/{flightNumber}/details endpoint queries and returns full flight details",
+        "All endpoints return appropriate HTTP status codes (200, 404, 500)",
+        "Controller uses WorkflowClient injected via Spring",
+        "Postman/curl examples added to README",
+        "./mvnw test includes integration tests for REST endpoints",
+        "./mvnw spring-boot:run starts successfully and endpoints are accessible at localhost:8080"
+      ],
+      "technicalNotes": [
+        "Use @Autowired to inject WorkflowClient",
+        "WorkflowId format: 'flight-{flightNumber}-{flightDate}'",
+        "Handle WorkflowNotFoundException for queries on non-existent flights",
+        "Use @Valid for request body validation",
+        "Return DTOs, not internal domain objects directly"
+      ]
+    },
+    {
+      "id": "story-6",
+      "title": "Multi-leg Flight Support with Child Workflows",
+      "priority": 6,
+      "passes": false,
+      "description": "Extend system to handle connecting flights where one flight's completion triggers next leg",
+      "acceptanceCriteria": [
+        "MultiLegFlightWorkflow interface represents a journey with multiple connected flights",
+        "MultiLegFlightWorkflow starts child FlightWorkflow instances for each leg",
+        "Parent workflow waits for each leg to complete before starting next leg",
+        "If any leg is cancelled, parent workflow handles compensation logic",
+        "Add linkage data to Flight model: previousFlightNumber, nextFlightNumber",
+        "When leg completes, parent workflow can trigger next leg with updated aircraft/crew info",
+        "Unit test creates 3-leg journey (ORD->DFW->LAX->SFO) and verifies all legs complete",
+        "Test verifies cancelling middle leg affects subsequent legs",
+        "./mvnw test passes with multi-leg tests",
+        "REST endpoint POST /api/flights/journey accepts array of flights and starts multi-leg workflow"
+      ],
+      "technicalNotes": [
+        "Use Workflow.newChildWorkflowStub() to start child workflows",
+        "Each child workflow has independent WorkflowId",
+        "Parent workflow uses Async.function() to start children",
+        "ChildWorkflowOptions should set ParentClosePolicy appropriately",
+        "Consider using ContinueAsNew if journey has many legs"
+      ]
+    },
+    {
+      "id": "story-7",
+      "title": "Embedded Web UI with Real-time Updates",
+      "priority": 7,
+      "passes": false,
+      "description": "Create embedded web UI that displays flight state and updates in real-time using WebSockets or SSE",
+      "acceptanceCriteria": [
+        "Static HTML/CSS/JS files in src/main/resources/static serve UI at http://localhost:8080",
+        "WebSocket or SSE endpoint provides real-time workflow state updates",
+        "UI displays list of active flights with: flightNumber, currentState, gate, delay, departure/arrival times",
+        "UI has form to start new flight with required fields",
+        "UI has buttons per flight to: announce delay, change gate, cancel flight",
+        "UI updates in real-time when signals are sent (no page refresh needed)",
+        "UI shows workflow history/audit trail for selected flight",
+        "UI uses simple, clean design (Bootstrap or Tailwind CSS)",
+        "WebSocketConfig or SseConfig @Configuration class enables real-time communication",
+        "FlightEventService publishes state changes to WebSocket/SSE clients",
+        "Verify in browser: Start flight, send delay signal, watch state update without refresh",
+        "./mvnw spring-boot:run starts app, UI accessible at localhost:8080",
+        "README updated with screenshot and UI usage instructions"
+      ],
+      "technicalNotes": [
+        "Use spring-boot-starter-websocket for WebSocket support",
+        "Or use Spring WebFlux SSE if simpler (Flux<ServerSentEvent>)",
+        "UI can use vanilla JS with WebSocket/EventSource API",
+        "Or use lightweight library like Alpine.js for reactivity",
+        "Publish events when workflow state changes via WorkflowUpdateHandler or polling",
+        "Keep UI simple - focus on demo functionality over polish"
+      ]
+    },
+    {
+      "id": "story-8",
+      "title": "Failure Recovery Demonstration",
+      "priority": 8,
+      "passes": false,
+      "description": "Add endpoint/script that demonstrates workflow surviving worker restart - showing Temporal's durability value prop",
+      "acceptanceCriteria": [
+        "POST /api/admin/restart-worker endpoint that stops and restarts worker (or script that does this)",
+        "Long-running test workflow (5+ seconds with sleeps) to demonstrate recovery",
+        "UI shows workflow continues executing after worker restart without data loss",
+        "Add 'Simulate Failure' button in UI that calls restart endpoint",
+        "Workflow history shows no gaps after restart",
+        "README section explaining failure recovery demo steps",
+        "Verify in browser: Start long flight workflow, click 'Simulate Failure', watch workflow resume",
+        "Application logs show: 'Worker stopped', 'Worker restarted', 'Workflow resumed from last checkpoint'",
+        "./mvnw test includes test that stops/starts worker mid-workflow execution"
+      ],
+      "technicalNotes": [
+        "Use WorkerFactory.shutdown() and restart to simulate failure",
+        "Ensure workflow uses enough Workflow.sleep() calls to make restart visible",
+        "Worker restart should be graceful (finish current task first)",
+        "This demonstrates Temporal's durability - workflow state survives process death"
+      ]
+    },
+    {
+      "id": "story-9",
+      "title": "Workflow History Export and Audit Trail",
+      "priority": 9,
+      "passes": false,
+      "description": "Add functionality to export workflow history as audit trail, demonstrating compliance/debugging value prop",
+      "acceptanceCriteria": [
+        "GET /api/flights/{flightNumber}/history endpoint returns complete workflow history",
+        "History includes: all events, timestamps, state transitions, signals received, activities executed",
+        "History formatted as JSON with clear event types and human-readable descriptions",
+        "UI displays timeline view of history with visual indicators for state changes",
+        "Add export button to download history as JSON file",
+        "HistoryService class uses WorkflowClient.newWorkflowStub() to fetch execution history",
+        "Unit test verifies history contains expected events after workflow execution",
+        "./mvnw test passes with history tests",
+        "README explains audit trail value for compliance/debugging",
+        "Verify in browser: Complete flight workflow, view history showing all state transitions with timestamps"
+      ],
+      "technicalNotes": [
+        "Use WorkflowExecution and HistoryEvent APIs to fetch history",
+        "Parse HistoryEventType to create friendly event descriptions",
+        "History can be large - consider pagination for production",
+        "This demonstrates Temporal's built-in audit trail for compliance"
+      ]
+    },
+    {
+      "id": "story-10",
+      "title": "Kafka Integration for Event Ingestion",
+      "priority": 10,
+      "passes": false,
+      "description": "Add Kafka consumer that listens for flight events and sends signals to workflows, demonstrating integration with existing streaming architecture",
+      "acceptanceCriteria": [
+        "KafkaConsumerConfig @Configuration class sets up Kafka consumer",
+        "FlightEventConsumer @Service listens to 'flight-events' topic",
+        "Consumer deserializes flight events from JSON messages",
+        "Consumer sends appropriate signals to workflows based on event type",
+        "Event types mapped: DELAY_ANNOUNCED -> announceDelay signal, GATE_CHANGED -> changeGate signal, etc.",
+        "docker-compose includes Kafka setup with topic creation",
+        "KafkaProducer test utility to publish test events",
+        "Integration test publishes Kafka event and verifies workflow receives signal",
+        "./mvnw test passes with Kafka integration tests",
+        "README updated with Kafka integration explanation and testing steps",
+        "Application logs show: 'Received Kafka event: DELAY_ANNOUNCED for flight AA1234', 'Sent signal to workflow'",
+        "Verify with docker-compose up: Publish event to Kafka, watch workflow state update in UI"
+      ],
+      "technicalNotes": [
+        "Use spring-kafka for consumer",
+        "Consumer should be idempotent (handle duplicate messages)",
+        "Use @KafkaListener annotation",
+        "Handle deserialization errors gracefully",
+        "This demonstrates how Temporal complements Kafka/Flink architecture"
+      ]
+    },
+    {
+      "id": "story-11",
+      "title": "Documentation and Demo Script",
+      "priority": 11,
+      "passes": false,
+      "description": "Comprehensive README with architecture explanation, demo script, and value proposition documentation",
+      "acceptanceCriteria": [
+        "README.md includes: Project overview, architecture diagram (ASCII or embedded image), prerequisites, quick start, demo script",
+        "Architecture section explains: How Temporal complements Kafka/Flink, What Temporal provides (durability, reliability, consistency, scalability)",
+        "Demo script with step-by-step instructions: 1) Start services, 2) Start flight, 3) Send events, 4) Show state updates, 5) Simulate failure, 6) Show recovery, 7) Export history",
+        "Value proposition section highlighting the four 'ilities' with specific examples from the demo",
+        "Troubleshooting section with common issues and solutions",
+        "API documentation section with all endpoints and example curl commands",
+        "Contributing section (even if just placeholder)",
+        "License file (MIT or Apache 2.0)",
+        "AGENTS.md file with learnings for future iterations",
+        "README formatted with proper markdown, code blocks, and sections",
+        "Verify all README instructions work on fresh clone: git clone, follow README, demo runs successfully"
+      ],
+      "technicalNotes": [
+        "Architecture diagram should show: Flight Events -> Kafka -> Consumer -> Temporal Workflows -> State Management",
+        "Explain clearly: Flink does stream processing, Temporal does orchestration",
+        "Include links to Temporal documentation for deeper learning",
+        "Demo script should take 5-10 minutes to execute",
+        "Value props should map to actual demo features"
+      ]
+    }
+  ]
+}

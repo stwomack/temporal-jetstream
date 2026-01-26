@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: temporal-jetstream
+
+  # MongoDB Configuration
+  data:
+    mongodb:
+      uri: mongodb://admin:admin@localhost:27017/jetstream?authSource=admin
+
+  # Kafka Configuration
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: jetstream-consumer-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+# Server Configuration
+server:
+  port: 8080
+
+# Temporal Configuration
+temporal:
+  service-address: localhost:7233
+  namespace: default
+  task-queue: flight-task-queue
+
+# Logging
+logging:
+  level:
+    com.temporal.jetstream: INFO
+    io.temporal: INFO
