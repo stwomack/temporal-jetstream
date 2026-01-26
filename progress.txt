@@ -87,3 +87,43 @@
 - Flight domain model initializes with SCHEDULED state and 0 delay by default
 
 ---
+## 2026-01-26 14:01 - story-3
+
+**What was implemented:**
+- Added three @SignalMethod annotations to FlightWorkflow interface:
+  - announceDelay(int minutes) - signals flight delay
+  - changeGate(String newGate) - signals gate change
+  - cancelFlight(String reason) - signals flight cancellation
+- Implemented signal handlers in FlightWorkflowImpl:
+  - Added instance variables to track signal data (delayMinutes, currentGate, cancelled, cancellationReason)
+  - announceDelay updates delayMinutes and logs the event
+  - changeGate updates currentGate and logs the event
+  - cancelFlight sets cancelled flag and transitions workflow to CANCELLED state
+- Implemented early termination logic for cancellation:
+  - Workflow checks cancelled flag after each state transition
+  - When cancelled, immediately transitions to CANCELLED state and exits
+- Created helper method updateFlightWithSignalData() to apply signal changes to Flight object
+- Added comprehensive unit tests for signal handling:
+  - testAnnounceDelaySignal - verifies delay signal updates delay field
+  - testChangeGateSignal - verifies gate change signal updates gate field
+  - testCancelFlightSignal - verifies cancellation terminates workflow early with CANCELLED state
+  - testMultipleSignals - verifies multiple signals (delay + gate change) work together
+
+**Files changed:**
+- src/main/java/com/temporal/jetstream/workflow/FlightWorkflow.java (added 3 signal methods)
+- src/main/java/com/temporal/jetstream/workflow/FlightWorkflowImpl.java (added signal handlers and cancellation logic)
+- src/test/java/com/temporal/jetstream/workflow/FlightWorkflowTest.java (added 4 signal tests)
+- prd.json (updated story-3 passes: true)
+
+**Learnings for future iterations:**
+- Signal methods must be idempotent - safe to receive multiple times
+- Signals are processed asynchronously and can arrive at any point during workflow execution
+- Use workflow instance variables to store signal data (not static variables)
+- Workflow.await() can be used for more sophisticated signal handling with conditions
+- cancelFlight demonstrates how signals can alter workflow control flow and cause early termination
+- Test signals by starting workflow asynchronously (WorkflowStub.start()) then sending signals before getting result
+- TestWorkflowEnvironment makes signal testing fast (<3 seconds for all 6 tests)
+- Signal handlers show up in logs with format: "Received signal: [signalName], [parameters]"
+- Cancellation checks after each Workflow.sleep() ensure timely response to cancel signals
+
+---
