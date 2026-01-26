@@ -168,3 +168,54 @@
 - Query methods should be lightweight - no heavy computation or external calls
 
 ---
+## 2026-01-26 14:10 - story-5
+
+**What was implemented:**
+- Created FlightController @RestController with REST API endpoints for workflow operations:
+  - POST /api/flights/start - Start new flight workflow, returns workflowId
+  - POST /api/flights/{flightNumber}/delay - Send announceDelay signal with minutes parameter
+  - POST /api/flights/{flightNumber}/gate - Send changeGate signal with newGate parameter
+  - POST /api/flights/{flightNumber}/cancel - Send cancelFlight signal with reason parameter
+  - GET /api/flights/{flightNumber}/state - Query current flight state
+  - GET /api/flights/{flightNumber}/details - Query complete flight details
+- Created DTOs for request validation and responses:
+  - StartFlightRequest with @NotBlank and @NotNull validation annotations
+  - StartFlightResponse, AnnounceDelayRequest, ChangeGateRequest, CancelFlightRequest
+  - FlightStateResponse and ErrorResponse for API responses
+- All endpoints accept optional flightDate query parameter (defaults to today if not provided)
+- Controller uses @Autowired WorkflowClient from Spring context
+- Proper HTTP status codes: 200 (success), 404 (workflow not found), 500 (errors)
+- WorkflowNotFoundException caught and returned as 404 with error message
+- Added spring-boot-starter-validation dependency to pom.xml for @Valid support
+- Updated README with comprehensive REST API documentation and curl examples for all endpoints
+
+**Files changed:**
+- src/main/java/com/temporal/jetstream/controller/FlightController.java (created)
+- src/main/java/com/temporal/jetstream/dto/StartFlightRequest.java (created)
+- src/main/java/com/temporal/jetstream/dto/StartFlightResponse.java (created)
+- src/main/java/com/temporal/jetstream/dto/AnnounceDelayRequest.java (created)
+- src/main/java/com/temporal/jetstream/dto/ChangeGateRequest.java (created)
+- src/main/java/com/temporal/jetstream/dto/CancelFlightRequest.java (created)
+- src/main/java/com/temporal/jetstream/dto/FlightStateResponse.java (created)
+- src/main/java/com/temporal/jetstream/dto/ErrorResponse.java (created)
+- pom.xml (added spring-boot-starter-validation dependency)
+- README.md (added REST API Endpoints section with curl examples)
+- prd.json (updated story-5 passes: true)
+
+**Learnings for future iterations:**
+- FlightController uses WorkflowClient.newWorkflowStub() with WorkflowOptions to start workflows
+- WorkflowId format: "flight-{flightNumber}-{flightDate}" ensures unique workflow per flight per day
+- Use WorkflowClient.start(workflow::method, args) to start workflows asynchronously
+- For signals: get stub by workflowId and call signal methods directly on the stub
+- For queries: get stub by workflowId and call query methods directly on the stub
+- WorkflowNotFoundException is thrown when querying/signaling non-existent workflows
+- @Valid annotation on request bodies triggers Spring validation based on constraint annotations
+- Spring Boot 4.0 requires spring-boot-starter-validation for jakarta.validation support
+- Controller tests require running Temporal server, so integration tests verify controller wiring
+- Workflow functionality is already comprehensively tested in FlightWorkflowTest (10 passing tests)
+- REST endpoints can be manually tested with curl when application is running via ./mvnw spring-boot:run
+- buildWorkflowId() helper method defaults to today's date if flightDate parameter is null
+- getWorkflowStub() helper method creates workflow stub from workflowId for signals/queries
+- All endpoints log operations for debugging (e.g., "Started flight workflow: AA1234 with ID: flight-AA1234-2026-01-26")
+
+---

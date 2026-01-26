@@ -161,7 +161,7 @@
       "id": "story-5",
       "title": "REST API for Workflow Operations",
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "description": "Create REST controller to start flights, send events, and query flight state via HTTP endpoints",
       "acceptanceCriteria": [
         "FlightController @RestController class with @RequestMapping('/api/flights')",
