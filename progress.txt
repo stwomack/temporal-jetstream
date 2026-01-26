@@ -1,0 +1,45 @@
+## Codebase Patterns
+- Use Spring Boot 4.0.1 with Java 21 for this project
+- Temporal Java SDK 1.32.1 is configured to connect to localhost:7233
+- Maven wrapper (./mvnw) is used for all build commands
+- Application starts on port 8080
+- docker-compose.yml manages Kafka and MongoDB (NOT Temporal)
+- Temporal runs via separate `temporal server start-dev` command
+
+---
+
+## 2026-01-26 13:52 - story-1
+
+**What was implemented:**
+- Created Spring Boot 4.0.1 project structure with Java 21
+- Added Maven wrapper for consistent builds
+- Created pom.xml with latest stable dependencies:
+  - Spring Boot 4.0.1
+  - Temporal Java SDK 1.32.1
+  - Spring WebSocket for future real-time UI
+  - Spring Kafka for event integration
+  - MongoDB for persistence
+- Created docker-compose.yml with Kafka (7.8.0) and MongoDB (8.0)
+- Created Application.java with @SpringBootApplication
+- Created application.yml with Temporal configuration (localhost:7233, flight-task-queue)
+- Created comprehensive README.md with prerequisites and quick start
+
+**Files changed:**
+- pom.xml (created)
+- src/main/java/com/temporal/jetstream/Application.java (created)
+- src/main/resources/application.yml (created)
+- docker-compose.yml (created)
+- README.md (created)
+- mvnw, mvnw.cmd, .mvn/wrapper/* (Maven wrapper)
+- .gitignore (already existed, no changes needed)
+
+**Learnings for future iterations:**
+- Spring Boot 4.0.1 is the latest stable version (as of January 2026)
+- Spring Boot 4.0 requires Java 17 minimum but supports Java 21 and Java 25
+- Had to clean up duplicate Application.java file in com.example package that was causing build failure
+- ./mvnw clean install completes successfully in under 1 second (after initial dependency download)
+- Application starts successfully in ~0.6 seconds and connects to MongoDB
+- Temporal server must be started separately with `temporal server start-dev` (not in docker-compose)
+- Task queue is configured as "flight-task-queue" for workflow operations
+
+---
