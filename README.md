@@ -62,6 +62,142 @@ docker-compose ps
 
 The application will start on `http://localhost:8080`.
 
+## REST API Endpoints
+
+The application provides REST endpoints to interact with flight workflows:
+
+### Start a Flight
+
+Start a new flight workflow:
+
+```bash
+curl -X POST http://localhost:8080/api/flights/start \
+  -H "Content-Type: application/json" \
+  -d '{
+    "flightNumber": "AA1234",
+    "flightDate": "2026-01-26",
+    "departureStation": "ORD",
+    "arrivalStation": "DFW",
+    "scheduledDeparture": "2026-01-26T10:00:00",
+    "scheduledArrival": "2026-01-26T12:30:00",
+    "gate": "A12",
+    "aircraft": "N123AA"
+  }'
+```
+
+Response:
+```json
+{
+  "workflowId": "flight-AA1234-2026-01-26",
+  "flightNumber": "AA1234",
+  "message": "Flight workflow started successfully"
+}
+```
+
+### Announce Delay
+
+Send a delay signal to a running flight:
+
+```bash
+curl -X POST http://localhost:8080/api/flights/AA1234/delay?flightDate=2026-01-26 \
+  -H "Content-Type: application/json" \
+  -d '{"minutes": 45}'
+```
+
+Response:
+```json
+{
+  "error": "SUCCESS",
+  "message": "Delay of 45 minutes announced"
+}
+```
+
+### Change Gate
+
+Send a gate change signal to a running flight:
+
+```bash
+curl -X POST http://localhost:8080/api/flights/AA1234/gate?flightDate=2026-01-26 \
+  -H "Content-Type: application/json" \
+  -d '{"newGate": "B24"}'
+```
+
+Response:
+```json
+{
+  "error": "SUCCESS",
+  "message": "Gate changed to B24"
+}
+```
+
+### Cancel Flight
+
+Send a cancellation signal to a running flight:
+
+```bash
+curl -X POST http://localhost:8080/api/flights/AA1234/cancel?flightDate=2026-01-26 \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "Weather conditions"}'
+```
+
+Response:
+```json
+{
+  "error": "SUCCESS",
+  "message": "Flight cancelled: Weather conditions"
+}
+```
+
+### Query Flight State
+
+Get the current state of a flight:
+
+```bash
+curl http://localhost:8080/api/flights/AA1234/state?flightDate=2026-01-26
+```
+
+Response:
+```json
+{
+  "flightNumber": "AA1234",
+  "currentState": "BOARDING"
+}
+```
+
+### Query Flight Details
+
+Get complete flight details:
+
+```bash
+curl http://localhost:8080/api/flights/AA1234/details?flightDate=2026-01-26
+```
+
+Response:
+```json
+{
+  "flightNumber": "AA1234",
+  "flightDate": "2026-01-26",
+  "departureStation": "ORD",
+  "arrivalStation": "DFW",
+  "scheduledDeparture": "2026-01-26T10:00:00",
+  "scheduledArrival": "2026-01-26T12:30:00",
+  "currentState": "BOARDING",
+  "gate": "B24",
+  "aircraft": "N123AA",
+  "delay": 45
+}
+```
+
+### Error Responses
+
+When a flight is not found:
+```json
+{
+  "error": "WORKFLOW_NOT_FOUND",
+  "message": "Flight not found: AA1234"
+}
+```
+
 ## Querying Flight State
 
 The FlightWorkflow supports three query methods that allow you to inspect the current state of a running workflow without blocking its execution:
