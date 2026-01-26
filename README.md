@@ -2,6 +2,138 @@
 
 A demonstration application showing how Temporal provides durability, reliability, scalability, and consistency for multi-day airline flight lifecycle orchestration. Complements existing Kafka/Flink streaming architecture by providing durable execution guarantees for long-running flight processes.
 
+## Architecture & Value Proposition
+
+### System Architecture
+
+```
+┌─────────────────┐
+│  External       │
+│  Systems        │──┐
+│  (Gate, Crew,   │  │
+│   Weather, etc) │  │
+└─────────────────┘  │
+                     │
+                     ▼
+              ┌──────────────┐
+              │    Kafka     │◄────── High-throughput
+              │   (Events)   │        event streaming
+              └──────┬───────┘
+                     │
+          ┌──────────┴──────────┐
+          │                     │
+          ▼                     ▼
+    ┌─────────────┐      ┌─────────────┐
+    │    Flink    │      │  Temporal   │
+    │ (Analytics) │      │ (Workflow   │
+    │             │      │  Execution) │
+    └─────────────┘      └──────┬──────┘
+          │                     │
+          │              ┌──────┴──────┐
+          │              │             │
+          ▼              ▼             ▼
+    ┌──────────┐   ┌─────────┐  ┌───────────┐
+    │ Metrics  │   │ Flight  │  │ WebSocket │
+    │   DB     │   │ State   │  │  Updates  │
+    └──────────┘   └─────────┘  └─────┬─────┘
+                                       │
+                                       ▼
+                                 ┌──────────┐
+                                 │  Web UI  │
+                                 └──────────┘
+```
+
+### How Temporal Complements Kafka/Flink
+
+**Kafka** provides:
+- High-throughput, low-latency event streaming
+- Event buffering and replay capabilities
+- Loose coupling between producers and consumers
+
+**Flink** provides:
+- Real-time stream processing
+- Complex event aggregations and analytics
+- Time-windowed computations
+
+**Temporal** provides:
+- Durable, long-running process orchestration
+- Guaranteed execution of multi-step workflows
+- Built-in retry and failure recovery
+- Complete audit trail of all decisions
+
+Together, they create a comprehensive airline operations platform:
+- **Events flow through Kafka** (gate changes, delays, crew updates)
+- **Flink processes metrics** (on-time performance, capacity utilization)
+- **Temporal orchestrates workflows** (flight lifecycle, multi-leg journeys)
+
+### The Four 'ilities: Temporal's Value Proposition
+
+#### 1. **Durability** - Workflows Survive Failures
+
+**What it means:** Flight state persists across worker restarts and crashes.
+
+**Demo feature:** Click "Simulate Failure" button while flight is in progress. Watch workflow automatically resume from last checkpoint.
+
+**Real-world value:**
+- Deploy new code without losing in-flight operations
+- Recover from crashes without manual intervention
+- No lost gate assignments or delay notifications
+
+#### 2. **Reliability** - Guaranteed Execution
+
+**What it means:** Multi-step processes complete even if individual steps fail temporarily.
+
+**Demo feature:** Workflow progresses through all states (SCHEDULED → BOARDING → DEPARTED → IN_FLIGHT → LANDED → COMPLETED) with automatic retries on failures.
+
+**Real-world value:**
+- Crew notifications eventually succeed even if systems are temporarily down
+- Passenger updates retry until delivered
+- No manual tracking of "what step failed"
+
+#### 3. **Consistency** - Complete Audit Trail
+
+**What it means:** Every state transition, signal, and decision is recorded immutably.
+
+**Demo feature:** Click "View Audit Trail" to see complete history with timestamps for all events, delays, gate changes, and cancellations.
+
+**Real-world value:**
+- Regulatory compliance (prove when decisions were made)
+- Debugging (understand exactly what happened)
+- Analytics (measure actual vs. planned timelines)
+
+#### 4. **Scalability** - Independent Workflow Instances
+
+**What it means:** Each flight is an independent workflow instance; horizontally scalable.
+
+**Demo feature:** Start multiple flights simultaneously. Each has independent state and can be queried/signaled independently.
+
+**Real-world value:**
+- Handle 10,000+ concurrent flights per airport
+- No shared state bottlenecks
+- Scale workers up/down based on flight volume
+
+### Key Technical Benefits
+
+**Event-Driven Integration:**
+- External systems publish to Kafka
+- Temporal consumes events and drives workflows
+- No tight coupling between event producers and orchestration
+
+**State Management:**
+- Workflow variables automatically persisted
+- No need for external state store
+- Queries provide real-time state access
+
+**Failure Handling:**
+- Automatic retries with exponential backoff
+- Circuit breakers for failing dependencies
+- Graceful degradation on partial failures
+
+**Observability:**
+- Complete workflow history for every flight
+- Real-time queries for current state
+- Integration with monitoring/alerting systems
+
 ## Prerequisites
 
 Before running the application, ensure you have the following installed:
@@ -61,6 +193,258 @@ docker-compose ps
 ```
 
 The application will start on `http://localhost:8080`.
+
+## Complete Demo Script (5-10 minutes)
+
+This step-by-step script demonstrates all key features of the system. Follow along to see Temporal's durability, reliability, consistency, and scalability in action.
+
+### Step 1: Verify All Services Are Running
+
+Before starting the demo, ensure all services are healthy:
+
+```bash
+# Check Temporal is accessible
+temporal namespace list
+
+# Check Docker services
+docker-compose ps
+# Should see: kafka, zookeeper, mongodb all running
+
+# Check application is running
+curl http://localhost:8080/api/flights/AA1234/state?flightDate=2026-01-26 || echo "App ready for flights"
+```
+
+Open these URLs in separate browser tabs:
+- **Application UI:** http://localhost:8080
+- **Temporal Web UI:** http://localhost:8233
+
+### Step 2: Start a Flight Workflow
+
+**Via Web UI:**
+1. Open http://localhost:8080
+2. Fill in the "Start New Flight" form:
+   - Flight Number: `AA1234`
+   - Flight Date: Today's date
+   - Departure Station: `ORD`
+   - Arrival Station: `DFW`
+   - Scheduled Departure: 2 hours from now
+   - Scheduled Arrival: 5 hours from now
+   - Gate: `A12`
+   - Aircraft: `N123AA`
+3. Click "Start Flight"
+4. Watch the flight appear in the Active Flights list
+
+**Via REST API:**
+```bash
+curl -X POST http://localhost:8080/api/flights/start \
+  -H "Content-Type: application/json" \
+  -d '{
+    "flightNumber": "AA1234",
+    "flightDate": "2026-01-26",
+    "departureStation": "ORD",
+    "arrivalStation": "DFW",
+    "scheduledDeparture": "2026-01-26T14:00:00",
+    "scheduledArrival": "2026-01-26T16:30:00",
+    "gate": "A12",
+    "aircraft": "N123AA"
+  }'
+```
+
+**Expected Result:** Flight workflow starts and begins progressing through states: SCHEDULED → BOARDING → DEPARTED → IN_FLIGHT → LANDED → COMPLETED
+
+### Step 3: Send Events to Update Flight State
+
+While the flight is in progress, send signals to update its state.
+
+**Announce a Delay:**
+
+Via UI: Click "Announce Delay" and enter 45 minutes
+
+Via API:
+```bash
+curl -X POST http://localhost:8080/api/flights/AA1234/delay?flightDate=2026-01-26 \
+  -H "Content-Type: application/json" \
+  -d '{"minutes": 45}'
+```
+
+**Change the Gate:**
+
+Via UI: Click "Change Gate" and enter `B24`
+
+Via API:
+```bash
+curl -X POST http://localhost:8080/api/flights/AA1234/gate?flightDate=2026-01-26 \
+  -H "Content-Type: application/json" \
+  -d '{"newGate": "B24"}'
+```
+
+**Expected Result:** Watch the UI update in real-time with the new delay and gate information. Check the Event Log for signal events.
+
+### Step 4: Query Flight State
+
+Verify the workflow's current state using queries.
+
+**Via REST API:**
+```bash
+# Get current state
+curl http://localhost:8080/api/flights/AA1234/state?flightDate=2026-01-26
+
+# Get complete flight details
+curl http://localhost:8080/api/flights/AA1234/details?flightDate=2026-01-26
+```
+
+**Expected Result:** JSON response showing current state (e.g., IN_FLIGHT), gate (B24), and delay (45 minutes).
+
+### Step 5: Demonstrate Failure Recovery (Durability)
+
+This step shows Temporal's durability - workflows survive process restarts.
+
+**Start a Long-Running Demo Flight:**
+
+Via UI: Start a flight with number `DEMO999` (flight numbers starting with "DEMO" have 5-second delays between states for ~25 second total duration)
+
+**Simulate a Worker Failure:**
+
+Via UI: While DEMO999 is in progress, click the "⚡ Simulate Failure" button in the Active Flights panel
+
+Via API:
+```bash
+curl -X POST http://localhost:8080/api/admin/restart-worker
+```
+
+**Watch What Happens:**
+1. Application logs show: "Worker stopped"
+2. Application logs show: "Worker restarted"
+3. Workflow automatically resumes from last checkpoint
+4. Flight continues: IN_FLIGHT → LANDED → COMPLETED
+5. No data loss - delay and gate changes are preserved
+
+**Expected Result:** The flight completes successfully despite the worker restart, demonstrating that workflow state is durable and survives failures.
+
+### Step 6: View Complete Audit Trail (Consistency)
+
+Every workflow maintains a complete, immutable history of all events.
+
+**Via Web UI:**
+1. Select a completed flight (e.g., AA1234)
+2. Click "📋 View Audit Trail" button
+3. See timeline view with all events:
+   - Workflow started
+   - State transitions (SCHEDULED → BOARDING → etc.)
+   - Signals received (delay announced, gate changed)
+   - Workflow completed
+4. Click "📥 Export as JSON" to download the history
+
+**Via REST API:**
+```bash
+curl http://localhost:8080/api/flights/AA1234/history?flightDate=2026-01-26
+```
+
+**Expected Result:** Complete chronological history with timestamps showing every decision, state change, and signal. This immutable audit trail is valuable for compliance and debugging.
+
+### Step 7: Test Kafka Integration (Event-Driven Architecture)
+
+Demonstrate how external events from Kafka automatically drive workflow signals.
+
+**Publish an Event to Kafka:**
+```bash
+# Connect to Kafka container
+docker exec -it temporal-jetstream-kafka-1 /bin/bash
+
+# Inside the container, start the console producer
+kafka-console-producer --broker-list localhost:9092 --topic flight-events
+
+# Paste this event (then press Enter and Ctrl+D):
+{"eventType":"DELAY_ANNOUNCED","flightNumber":"AA1234","flightDate":"2026-01-26","data":"{\"delayMinutes\":30}"}
+```
+
+**Watch the Application:**
+1. Check application logs: Should see "Received Kafka event: DELAY_ANNOUNCED for flight AA1234"
+2. Check application logs: Should see "Sent announceDelay signal to workflow"
+3. Check UI: Flight AA1234 should now show 30-minute delay
+
+**Expected Result:** Kafka events are automatically consumed and translated into workflow signals, showing how Temporal integrates with streaming architectures.
+
+### Step 8: Test Multi-Leg Journey (Scalability)
+
+Demonstrate child workflow orchestration for connecting flights.
+
+**Start a Multi-Leg Journey:**
+```bash
+curl -X POST http://localhost:8080/api/flights/journey \
+  -H "Content-Type: application/json" \
+  -d '{
+    "flights": [
+      {
+        "flightNumber": "AA100",
+        "flightDate": "2026-01-26",
+        "departureStation": "ORD",
+        "arrivalStation": "DFW",
+        "scheduledDeparture": "2026-01-26T08:00:00",
+        "scheduledArrival": "2026-01-26T11:00:00",
+        "gate": "A1",
+        "aircraft": "N100AA"
+      },
+      {
+        "flightNumber": "AA200",
+        "flightDate": "2026-01-26",
+        "departureStation": "DFW",
+        "arrivalStation": "LAX",
+        "scheduledDeparture": "2026-01-26T12:00:00",
+        "scheduledArrival": "2026-01-26T14:00:00",
+        "gate": "B1",
+        "aircraft": "N100AA"
+      },
+      {
+        "flightNumber": "AA300",
+        "flightDate": "2026-01-26",
+        "departureStation": "LAX",
+        "arrivalStation": "SFO",
+        "scheduledDeparture": "2026-01-26T15:00:00",
+        "scheduledArrival": "2026-01-26T16:30:00",
+        "gate": "C1",
+        "aircraft": "N100AA"
+      }
+    ]
+  }'
+```
+
+**Expected Result:** Parent workflow orchestrates three child workflows (AA100, AA200, AA300) sequentially. Each leg waits for the previous to complete. Aircraft N100AA is transferred between legs. Watch all three flights appear in the UI.
+
+### Demo Complete! 🎉
+
+You've now seen all four value propositions in action:
+
+✅ **Durability** - Workflow survived worker restart without data loss
+✅ **Reliability** - Multi-step flight lifecycle completed with automatic retries
+✅ **Consistency** - Complete audit trail of all events and decisions
+✅ **Scalability** - Multiple independent flights and multi-leg journeys
+
+### Additional Exploration
+
+**Temporal Web UI:**
+- Visit http://localhost:8233
+- Click on "Workflows" to see all running/completed workflows
+- Click a workflow ID to see detailed execution history
+- Explore the workflow graph visualization
+
+**Cancel a Flight:**
+```bash
+curl -X POST http://localhost:8080/api/flights/AA1234/cancel?flightDate=2026-01-26 \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "Weather conditions"}'
+```
+
+**Monitor Kafka:**
+```bash
+# View all messages in flight-events topic
+docker exec -it temporal-jetstream-kafka-1 kafka-console-consumer \
+  --bootstrap-server localhost:9092 \
+  --topic flight-events \
+  --from-beginning
+```
+
+
 
 ## Web UI
 
@@ -792,6 +1176,66 @@ This is the initial project setup. Future stories will add:
 docker-compose down -v
 docker-compose up -d
 ```
+
+### Tests failing
+
+```bash
+# Run without Kafka integration tests (they can be flaky with embedded Kafka)
+./mvnw test -Dtest='FlightWorkflowTest,MultiLegFlightWorkflowTest,FailureRecoveryTest,HistoryServiceTest'
+```
+
+### Kafka consumer not receiving messages
+
+- Verify Kafka is running: `docker-compose ps`
+- Check application logs for "Received Kafka message"
+- Ensure flight workflow is started before publishing events (workflow must exist to receive signals)
+
+## Contributing
+
+Contributions are welcome! This is a demonstration project showing Temporal best practices for airline operations.
+
+### Development Setup
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/my-feature`
+3. Make your changes
+4. Run tests: `./mvnw test`
+5. Commit your changes: `git commit -am 'Add new feature'`
+6. Push to the branch: `git push origin feature/my-feature`
+7. Submit a pull request
+
+### Areas for Contribution
+
+**New Features:**
+- Activities for crew notifications, passenger updates
+- Integration with additional external systems
+- Additional workflow patterns (delays, diversions, maintenance)
+- Enhanced UI with more visualizations
+
+**Improvements:**
+- Performance optimization for high-throughput scenarios
+- Additional test coverage
+- Documentation enhancements
+- Example deployments (Kubernetes, Docker Swarm)
+
+**Bug Fixes:**
+- Report issues via GitHub Issues
+- Include reproduction steps and logs
+- Submit PR with fix and test
+
+### Code Style
+
+- Follow Java standard conventions
+- Use meaningful variable and method names
+- Add comments for complex logic
+- Include unit tests for new features
+- Update README for user-facing changes
+
+### Questions or Ideas?
+
+- Open a GitHub Issue for discussion
+- Check existing issues for similar topics
+- Temporal community: https://community.temporal.io
 
 ## License
 
