@@ -287,4 +287,236 @@ class FlightWorkflowTest {
             testEnv.close();
         }
     }
+
+    @Test
+    void testGetCurrentStateQuery() {
+        TestWorkflowEnvironment testEnv = TestWorkflowEnvironment.newInstance();
+        Worker worker = testEnv.newWorker("flight-task-queue");
+        worker.registerWorkflowImplementationTypes(FlightWorkflowImpl.class);
+        testEnv.start();
+
+        try {
+            Flight flight = new Flight(
+                    "QA3333",
+                    LocalDate.now(),
+                    "ORD",
+                    "LAX",
+                    LocalDateTime.now().plusHours(2),
+                    LocalDateTime.now().plusHours(5),
+                    "G5",
+                    "N33333"
+            );
+
+            String workflowId = "flight-QA3333-test-query-state";
+            WorkflowOptions options = WorkflowOptions.newBuilder()
+                    .setTaskQueue("flight-task-queue")
+                    .setWorkflowId(workflowId)
+                    .build();
+
+            FlightWorkflow workflow = testEnv.getWorkflowClient()
+                    .newWorkflowStub(FlightWorkflow.class, options);
+
+            // Start workflow asynchronously
+            WorkflowStub untypedStub = WorkflowStub.fromTyped(workflow);
+            untypedStub.start(flight);
+
+            // Query current state multiple times as workflow progresses
+            // Note: In test environment, workflow executes very quickly,
+            // so we query immediately and verify the workflow started
+            FlightState state = workflow.getCurrentState();
+            assertNotNull(state);
+            assertTrue(state == FlightState.SCHEDULED ||
+                      state == FlightState.BOARDING ||
+                      state == FlightState.DEPARTED ||
+                      state == FlightState.IN_FLIGHT ||
+                      state == FlightState.LANDED ||
+                      state == FlightState.COMPLETED);
+
+            // Wait for workflow to complete
+            Flight result = untypedStub.getResult(Flight.class);
+
+            // Query again after completion
+            FlightState finalState = workflow.getCurrentState();
+            assertEquals(FlightState.COMPLETED, finalState);
+            assertEquals(FlightState.COMPLETED, result.getCurrentState());
+        } finally {
+            testEnv.close();
+        }
+    }
+
+    @Test
+    void testGetFlightDetailsQuery() {
+        TestWorkflowEnvironment testEnv = TestWorkflowEnvironment.newInstance();
+        Worker worker = testEnv.newWorker("flight-task-queue");
+        worker.registerWorkflowImplementationTypes(FlightWorkflowImpl.class);
+        testEnv.start();
+
+        try {
+            Flight flight = new Flight(
+                    "ZZ4444",
+                    LocalDate.now(),
+                    "SFO",
+                    "JFK",
+                    LocalDateTime.now().plusHours(3),
+                    LocalDateTime.now().plusHours(9),
+                    "H10",
+                    "N44444"
+            );
+
+            String workflowId = "flight-ZZ4444-test-query-details";
+            WorkflowOptions options = WorkflowOptions.newBuilder()
+                    .setTaskQueue("flight-task-queue")
+                    .setWorkflowId(workflowId)
+                    .build();
+
+            FlightWorkflow workflow = testEnv.getWorkflowClient()
+                    .newWorkflowStub(FlightWorkflow.class, options);
+
+            // Start workflow asynchronously
+            WorkflowStub untypedStub = WorkflowStub.fromTyped(workflow);
+            untypedStub.start(flight);
+
+            // Send signals to modify state
+            workflow.announceDelay(60);
+            workflow.changeGate("H15");
+
+            // Query flight details while workflow is running
+            Flight details = workflow.getFlightDetails();
+            assertNotNull(details);
+            assertEquals("ZZ4444", details.getFlightNumber());
+            assertEquals("SFO", details.getDepartureStation());
+            assertEquals("JFK", details.getArrivalStation());
+            assertEquals(60, details.getDelay());
+            assertEquals("H15", details.getGate());
+
+            // Wait for workflow to complete
+            Flight result = untypedStub.getResult(Flight.class);
+
+            // Query again after completion
+            Flight finalDetails = workflow.getFlightDetails();
+            assertEquals(FlightState.COMPLETED, finalDetails.getCurrentState());
+            assertEquals(60, finalDetails.getDelay());
+            assertEquals("H15", finalDetails.getGate());
+        } finally {
+            testEnv.close();
+        }
+    }
+
+    @Test
+    void testGetDelayMinutesQuery() {
+        TestWorkflowEnvironment testEnv = TestWorkflowEnvironment.newInstance();
+        Worker worker = testEnv.newWorker("flight-task-queue");
+        worker.registerWorkflowImplementationTypes(FlightWorkflowImpl.class);
+        testEnv.start();
+
+        try {
+            Flight flight = new Flight(
+                    "LH5555",
+                    LocalDate.now(),
+                    "MIA",
+                    "DEN",
+                    LocalDateTime.now().plusHours(1),
+                    LocalDateTime.now().plusHours(4),
+                    "K8",
+                    "N55555"
+            );
+
+            String workflowId = "flight-LH5555-test-query-delay";
+            WorkflowOptions options = WorkflowOptions.newBuilder()
+                    .setTaskQueue("flight-task-queue")
+                    .setWorkflowId(workflowId)
+                    .build();
+
+            FlightWorkflow workflow = testEnv.getWorkflowClient()
+                    .newWorkflowStub(FlightWorkflow.class, options);
+
+            // Start workflow asynchronously
+            WorkflowStub untypedStub = WorkflowStub.fromTyped(workflow);
+            untypedStub.start(flight);
+
+            // Initially no delay
+            int initialDelay = workflow.getDelayMinutes();
+            assertEquals(0, initialDelay);
+
+            // Send delay signal
+            workflow.announceDelay(90);
+
+            // Query delay after signal
+            int updatedDelay = workflow.getDelayMinutes();
+            assertEquals(90, updatedDelay);
+
+            // Wait for workflow to complete
+            Flight result = untypedStub.getResult(Flight.class);
+            assertEquals(90, result.getDelay());
+
+            // Query delay after completion
+            int finalDelay = workflow.getDelayMinutes();
+            assertEquals(90, finalDelay);
+        } finally {
+            testEnv.close();
+        }
+    }
+
+    @Test
+    void testQueriesWithSignalsIntegration() {
+        TestWorkflowEnvironment testEnv = TestWorkflowEnvironment.newInstance();
+        Worker worker = testEnv.newWorker("flight-task-queue");
+        worker.registerWorkflowImplementationTypes(FlightWorkflowImpl.class);
+        testEnv.start();
+
+        try {
+            Flight flight = new Flight(
+                    "EK6666",
+                    LocalDate.now(),
+                    "PHX",
+                    "BOS",
+                    LocalDateTime.now().plusHours(2),
+                    LocalDateTime.now().plusHours(7),
+                    "M3",
+                    "N66666"
+            );
+
+            String workflowId = "flight-EK6666-test-query-signal-integration";
+            WorkflowOptions options = WorkflowOptions.newBuilder()
+                    .setTaskQueue("flight-task-queue")
+                    .setWorkflowId(workflowId)
+                    .build();
+
+            FlightWorkflow workflow = testEnv.getWorkflowClient()
+                    .newWorkflowStub(FlightWorkflow.class, options);
+
+            // Start workflow asynchronously
+            WorkflowStub untypedStub = WorkflowStub.fromTyped(workflow);
+            untypedStub.start(flight);
+
+            // Verify initial state via query
+            FlightState initialState = workflow.getCurrentState();
+            assertNotNull(initialState);
+            int initialDelay = workflow.getDelayMinutes();
+            assertEquals(0, initialDelay);
+
+            // Send signals
+            workflow.announceDelay(45);
+            workflow.changeGate("M15");
+
+            // Verify changes via queries
+            int delayAfterSignal = workflow.getDelayMinutes();
+            assertEquals(45, delayAfterSignal);
+
+            Flight detailsAfterSignal = workflow.getFlightDetails();
+            assertEquals("M15", detailsAfterSignal.getGate());
+            assertEquals(45, detailsAfterSignal.getDelay());
+
+            // Wait for workflow to complete
+            Flight result = untypedStub.getResult(Flight.class);
+
+            // Verify final state via queries
+            FlightState finalState = workflow.getCurrentState();
+            assertEquals(FlightState.COMPLETED, finalState);
+            assertEquals(45, result.getDelay());
+            assertEquals("M15", result.getGate());
+        } finally {
+            testEnv.close();
+        }
+    }
 }

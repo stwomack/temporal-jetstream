@@ -62,6 +62,60 @@ docker-compose ps
 
 The application will start on `http://localhost:8080`.
 
+## Querying Flight State
+
+The FlightWorkflow supports three query methods that allow you to inspect the current state of a running workflow without blocking its execution:
+
+### Available Query Methods
+
+1. **getCurrentState()** - Returns the current FlightState enum value
+2. **getFlightDetails()** - Returns the complete Flight object with all current data
+3. **getDelayMinutes()** - Returns the current delay in minutes (0 if not delayed)
+
+### Example: Querying Flight State in Tests
+
+```java
+// Start a flight workflow
+FlightWorkflow workflow = workflowClient.newWorkflowStub(
+    FlightWorkflow.class,
+    WorkflowOptions.newBuilder()
+        .setTaskQueue("flight-task-queue")
+        .setWorkflowId("flight-AA1234-2026-01-26")
+        .build()
+);
+
+// Start workflow asynchronously
+WorkflowStub.fromTyped(workflow).start(flight);
+
+// Query current state
+FlightState state = workflow.getCurrentState();
+System.out.println("Current state: " + state);
+
+// Query delay
+int delay = workflow.getDelayMinutes();
+System.out.println("Current delay: " + delay + " minutes");
+
+// Query complete flight details
+Flight details = workflow.getFlightDetails();
+System.out.println("Flight details: " + details);
+
+// Send a signal to update the flight
+workflow.announceDelay(45);
+
+// Query again to see the updated delay
+int updatedDelay = workflow.getDelayMinutes();
+System.out.println("Updated delay: " + updatedDelay + " minutes"); // Output: 45 minutes
+```
+
+### Key Features of Queries
+
+- **Non-blocking**: Queries return immediately without affecting workflow execution
+- **Read-only**: Queries cannot modify workflow state
+- **Real-time**: Queries return the current state, including changes from signals
+- **Consistent**: Queries are strongly consistent with the workflow's current execution state
+
+See the test file `FlightWorkflowTest.java` for complete examples of querying workflow state.
+
 ## Verifying the Setup
 
 Once all services are running, you should see:

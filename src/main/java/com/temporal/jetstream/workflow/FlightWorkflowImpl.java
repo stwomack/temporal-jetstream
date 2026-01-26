@@ -17,9 +17,15 @@ public class FlightWorkflowImpl implements FlightWorkflow {
     private boolean cancelled = false;
     private String cancellationReason = null;
 
+    // Instance variable to track current flight state for queries
+    private Flight currentFlight = null;
+
     @Override
     public Flight executeFlight(Flight flight) {
         logger.info("Starting flight workflow for: {}", flight.getFlightNumber());
+
+        // Track current flight for queries
+        currentFlight = flight;
 
         // Initialize gate if provided
         if (flight.getGate() != null) {
@@ -119,5 +125,36 @@ public class FlightWorkflowImpl implements FlightWorkflow {
         if (currentGate != null) {
             flight.setGate(currentGate);
         }
+    }
+
+    @Override
+    public FlightState getCurrentState() {
+        return currentFlight != null ? currentFlight.getCurrentState() : null;
+    }
+
+    @Override
+    public Flight getFlightDetails() {
+        if (currentFlight == null) {
+            return null;
+        }
+        // Update flight with latest signal data before returning
+        Flight details = new Flight();
+        details.setFlightNumber(currentFlight.getFlightNumber());
+        details.setFlightDate(currentFlight.getFlightDate());
+        details.setDepartureStation(currentFlight.getDepartureStation());
+        details.setArrivalStation(currentFlight.getArrivalStation());
+        details.setScheduledDeparture(currentFlight.getScheduledDeparture());
+        details.setScheduledArrival(currentFlight.getScheduledArrival());
+        details.setCurrentState(currentFlight.getCurrentState());
+        details.setAircraft(currentFlight.getAircraft());
+        // Include signal data
+        details.setDelay(delayMinutes);
+        details.setGate(currentGate != null ? currentGate : currentFlight.getGate());
+        return details;
+    }
+
+    @Override
+    public int getDelayMinutes() {
+        return delayMinutes;
     }
 }

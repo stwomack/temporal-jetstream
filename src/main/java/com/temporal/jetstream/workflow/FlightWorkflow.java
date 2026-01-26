@@ -1,6 +1,8 @@
 package com.temporal.jetstream.workflow;
 
 import com.temporal.jetstream.model.Flight;
+import com.temporal.jetstream.model.FlightState;
+import io.temporal.workflow.QueryMethod;
 import io.temporal.workflow.SignalMethod;
 import io.temporal.workflow.WorkflowInterface;
 import io.temporal.workflow.WorkflowMethod;
@@ -19,4 +21,13 @@ public interface FlightWorkflow {
 
     @SignalMethod
     void cancelFlight(String reason);
+
+    @QueryMethod
+    FlightState getCurrentState();
+
+    @QueryMethod
+    Flight getFlightDetails();
+
+    @QueryMethod
+    int getDelayMinutes();
 }
