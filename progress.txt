@@ -394,3 +394,76 @@
 - Workflow history is immutable and provides complete audit trail even across restarts
 
 ---
+## 2026-01-26 14:40 - story-9
+
+**What was implemented:**
+- Created HistoryService to fetch and format workflow execution history
+  - Uses WorkflowServiceStubs.getWorkflowExecutionHistory() API to fetch raw events
+  - Dynamically detects namespace from WorkflowClient.getOptions().getNamespace()
+  - Parses HistoryEvent types into human-readable descriptions
+  - Categorizes events into: lifecycle, signal, timer, task, child_workflow, other
+  - Formats timestamps from nanoseconds to "yyyy-MM-dd HH:mm:ss" format
+- Created WorkflowHistoryEvent DTO with builder pattern for clean object construction
+- Added GET /api/flights/{flightNumber}/history endpoint to FlightController
+  - Returns complete workflow history as JSON array
+  - Handles WorkflowNotFoundException with 404 response
+  - Autowires HistoryService for history fetching
+- Enhanced Web UI with history timeline view and export functionality:
+  - Added "View Audit Trail" button in Flight Details panel
+  - Created history modal with loading states and error handling
+  - Implemented timeline visualization with color-coded events by category
+  - Visual indicators (dots) match event categories (green=lifecycle, yellow=signal, etc.)
+  - Export button downloads history as JSON file with metadata
+- Added comprehensive styling for timeline events in styles.css
+  - Timeline vertical line connecting events
+  - Category-specific colors and borders
+  - Event header with ID and timestamp
+  - Description and event type display
+- Created HistoryServiceTest with 3 test cases (all passing):
+  - testGetWorkflowHistory_ReturnsEvents: Verifies basic history fetching and structure
+  - testGetWorkflowHistory_WithSignals: Validates signal events are captured in history
+  - testGetWorkflowHistory_EventCategories: Confirms proper event categorization
+- Added extensive "Workflow History and Audit Trail" section to README:
+  - REST API documentation with example response
+  - UI usage instructions
+  - Event categories explanation
+  - Use cases: compliance, debugging, operations, incident investigation
+  - Value proposition highlighting Temporal's built-in immutable audit trail
+
+**Files changed:**
+- src/main/java/com/temporal/jetstream/service/HistoryService.java (created)
+- src/main/java/com/temporal/jetstream/dto/WorkflowHistoryEvent.java (created)
+- src/main/java/com/temporal/jetstream/controller/FlightController.java (added history endpoint)
+- src/main/resources/static/index.html (added history modal and button)
+- src/main/resources/static/styles.css (added timeline styles)
+- src/main/resources/static/app.js (added showHistoryModal, renderHistoryTimeline, exportHistory functions)
+- src/test/java/com/temporal/jetstream/service/HistoryServiceTest.java (created)
+- README.md (added comprehensive audit trail documentation)
+- prd.json (updated story-9 passes: true)
+
+**Learnings for future iterations:**
+- Temporal maintains complete, immutable workflow history automatically - no extra code needed
+- WorkflowServiceStubs.blockingStub().getWorkflowExecutionHistory() provides raw event access
+- Each HistoryEvent has eventType, eventTime, and type-specific attributes
+- Namespace must match between WorkflowClient and history queries - use workflowClient.getOptions().getNamespace()
+- TestWorkflowEnvironment uses "UnitTest" namespace, not "default" - dynamic namespace detection prevents test failures
+- Event types are enums from io.temporal.api.enums.v1.EventType (e.g., EVENT_TYPE_WORKFLOW_EXECUTION_STARTED)
+- Signal events include signalName in workflowExecutionSignaledEventAttributes
+- Timeline UI pattern: vertical line with dots at event points, color-coded by category
+- Export functionality uses Blob API to create downloadable JSON files from browser
+- All 21 tests pass (10 FlightWorkflow + 5 MultiLegFlightWorkflow + 3 FailureRecovery + 3 HistoryService)
+- Workflow history is essential for:
+  - Regulatory compliance (immutable audit trail)
+  - Debugging (complete event sequence with timing)
+  - Operations (understanding workflow behavior patterns)
+  - Incident investigation (reconstruct exact sequence of events)
+- Unlike application logs, Temporal history survives restarts, is guaranteed complete, and never rotates
+- History events are sequential with monotonically increasing eventId
+- Each workflow execution has unique run_id, but shares workflow_id across retries/continue-as-new
+- Format timestamps carefully - event.getEventTime() returns Timestamp with seconds and nanos
+- Bootstrap modal with modal-lg class provides good width for timeline view
+- Category-based styling makes it easy to visually scan for specific event types (signals, timers, etc.)
+- Export includes metadata (flightNumber, exportedAt, eventCount) for context
+- History API returns all events in single response - for production with long-running workflows, consider pagination
+
+---

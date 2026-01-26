@@ -269,7 +269,7 @@
       "id": "story-9",
       "title": "Workflow History Export and Audit Trail",
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "description": "Add functionality to export workflow history as audit trail, demonstrating compliance/debugging value prop",
       "acceptanceCriteria": [
         "GET /api/flights/{flightNumber}/history endpoint returns complete workflow history",
