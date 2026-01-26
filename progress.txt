@@ -219,3 +219,57 @@
 - All endpoints log operations for debugging (e.g., "Started flight workflow: AA1234 with ID: flight-AA1234-2026-01-26")
 
 ---
+## 2026-01-26 14:18 - story-6
+
+**What was implemented:**
+- Added previousFlightNumber and nextFlightNumber linkage fields to Flight model
+- Created MultiLegFlightWorkflow interface with:
+  - executeJourney(List<Flight>) method to orchestrate multi-leg journeys
+  - getJourneyStatus() query method to inspect journey progress
+  - getCurrentLegIndex() query method to track which leg is active
+  - cancelJourney(String reason) signal method to cancel entire journey
+- Implemented MultiLegFlightWorkflowImpl with child workflow orchestration:
+  - Uses Workflow.newChildWorkflowStub() to start child FlightWorkflow instances for each leg
+  - Parent workflow waits for each leg to complete before starting next leg
+  - Handles compensation logic when any leg is cancelled (cascades to subsequent legs)
+  - Transfers aircraft info from completed leg to next leg
+  - Implements turnaround time delay between legs (1 second simulation)
+- Created StartJourneyRequest and StartJourneyResponse DTOs for journey API
+- Added POST /api/flights/journey endpoint to FlightController:
+  - Accepts array of flight requests representing journey legs
+  - Sets linkage fields between flights (previousFlightNumber, nextFlightNumber)
+  - Starts MultiLegFlightWorkflow with journey-{journeyId} workflow ID format
+- Registered MultiLegFlightWorkflowImpl in TemporalConfig alongside FlightWorkflowImpl
+- Created comprehensive test suite with 5 test cases:
+  - testThreeLegJourney: Verifies 3-leg journey (ORD->DFW->LAX->SFO) completes successfully
+  - testJourneyWithCancelJourneySignal: Tests cancellation via parent workflow signal
+  - testAircraftTransferBetweenLegs: Verifies aircraft is transferred between legs
+  - testJourneyStatusQuery: Tests querying journey status during execution
+  - testSingleLegJourney: Edge case test for single-leg journey
+
+**Files changed:**
+- src/main/java/com/temporal/jetstream/model/Flight.java (added linkage fields)
+- src/main/java/com/temporal/jetstream/workflow/MultiLegFlightWorkflow.java (created)
+- src/main/java/com/temporal/jetstream/workflow/MultiLegFlightWorkflowImpl.java (created)
+- src/main/java/com/temporal/jetstream/dto/StartJourneyRequest.java (created)
+- src/main/java/com/temporal/jetstream/dto/StartJourneyResponse.java (created)
+- src/main/java/com/temporal/jetstream/controller/FlightController.java (added journey endpoint)
+- src/main/java/com/temporal/jetstream/config/TemporalConfig.java (registered multi-leg workflow)
+- src/test/java/com/temporal/jetstream/workflow/MultiLegFlightWorkflowTest.java (created)
+- prd.json (updated story-6 passes: true)
+
+**Learnings for future iterations:**
+- Child workflows are created using Workflow.newChildWorkflowStub() with ChildWorkflowOptions
+- ParentClosePolicy.PARENT_CLOSE_POLICY_ABANDON allows child workflows to continue if parent terminates
+- Must import ParentClosePolicy from io.temporal.api.enums.v1.ParentClosePolicy (not from EncodedValues)
+- Each child workflow gets independent WorkflowId: "flight-{flightNumber}-{flightDate}"
+- Parent workflow can wait for child completion by calling child workflow method directly
+- When testing workflows that return List<T>, avoid using WorkflowStub.getResult(List.class) as it returns LinkedHashMap instead of typed objects
+- Instead, use query methods to retrieve state or call workflow method directly via typed stub
+- TestWorkflowExtension doesn't have getTaskQueue() method; use worker.getTaskQueue() instead
+- Child workflows show up in execution history with START_CHILD_WORKFLOW_EXECUTION_INITIATED events
+- Compensation logic: when one leg cancels, parent can cancel all subsequent legs
+- Aircraft/crew info can be passed between legs by updating Flight object after leg completes
+- All 15 tests pass (10 from FlightWorkflowTest + 5 from MultiLegFlightWorkflowTest)
+
+---
