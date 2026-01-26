@@ -245,7 +245,7 @@
       "id": "story-8",
       "title": "Failure Recovery Demonstration",
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "description": "Add endpoint/script that demonstrates workflow surviving worker restart - showing Temporal's durability value prop",
       "acceptanceCriteria": [
         "POST /api/admin/restart-worker endpoint that stops and restarts worker (or script that does this)",

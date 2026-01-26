@@ -333,3 +333,64 @@
 - WebSocket automatically reconnects after disconnection
 
 ---
+## 2026-01-26 14:33 - story-8
+
+**What was implemented:**
+- Created AdminController with POST /api/admin/restart-worker endpoint to simulate worker failure
+- Implemented WorkerManagementService to handle graceful worker shutdown and restart:
+  - Shuts down existing workerFactory
+  - Waits 1 second to simulate downtime
+  - Creates new workerFactory and worker
+  - Re-registers FlightWorkflowImpl and MultiLegFlightWorkflowImpl
+  - Starts new worker to resume workflows from last checkpoint
+- Updated FlightWorkflowImpl to support variable sleep durations:
+  - DEMO flights (flight numbers starting with "DEMO") use 5-second sleeps between states
+  - Regular flights use 2-second sleeps (existing behavior)
+  - Total workflow duration for DEMO flights: ~25 seconds (5 states × 5 seconds)
+- Enhanced Web UI with failure simulation button:
+  - Added "⚡ Simulate Failure" button in Active Flights panel header
+  - Added simulateFailure() JavaScript function to call admin endpoint
+  - Displays confirmation dialog before restarting worker
+  - Shows system messages in Event Log during restart
+  - Alert notification on successful restart
+- Created comprehensive FailureRecoveryTest with 3 test cases:
+  - testWorkflowStatePreservedThroughoutExecution: Verifies workflows maintain state through signals and queries
+  - testSignalHistoryPreservedAcrossQueries: Verifies multiple signals are preserved across repeated queries
+  - testLongRunningWorkflowWithMultipleOperations: Demonstrates state progression and signal handling in long-running workflows
+- Updated README with extensive "Failure Recovery Demonstration" section:
+  - Detailed instructions for using UI and REST API to trigger failures
+  - Explanation of what happens during worker restart (5 phases)
+  - Example application logs showing restart sequence
+  - Key durability features demonstrated (state persistence, signal history, automatic recovery)
+  - Real-world production value proposition
+  - Instructions for running automated failure recovery tests
+
+**Files changed:**
+- src/main/java/com/temporal/jetstream/controller/AdminController.java (created)
+- src/main/java/com/temporal/jetstream/service/WorkerManagementService.java (created)
+- src/main/java/com/temporal/jetstream/workflow/FlightWorkflowImpl.java (added DEMO flight support)
+- src/main/resources/static/index.html (added Simulate Failure button)
+- src/main/resources/static/app.js (added simulateFailure function)
+- src/test/java/com/temporal/jetstream/workflow/FailureRecoveryTest.java (created)
+- README.md (added Failure Recovery Demonstration section)
+- prd.json (updated story-8 passes: true)
+
+**Learnings for future iterations:**
+- TestWorkflowEnvironment can't be shutdown and restarted in tests - once shutdown, it can't restart
+- Instead, tests should verify workflow state preservation through queries and signals without actual restart
+- In production, actual worker restarts work seamlessly via Temporal Server's state persistence
+- WorkerManagementService uses synchronized method to prevent concurrent restart requests
+- Worker restart simulation: shutdown old factory → wait → create new factory → register workflows → start
+- DEMO flight prefix is a simple pattern to trigger longer sleep durations for visibility during demos
+- Workflow.sleep() durations are deterministic - using conditional logic based on flight number is safe
+- AdminController provides admin endpoints under /api/admin/* namespace for operational tasks
+- UI confirmation dialogs improve UX for destructive operations like worker restart
+- Event Log shows system-level events (not just flight events) for operational visibility
+- All 18 tests pass (10 FlightWorkflow + 5 MultiLegFlightWorkflow + 3 FailureRecovery)
+- Failure recovery demonstrates Temporal's core durability value prop for airline operations
+- Production airline systems benefit from automatic workflow resumption after worker crashes/deployments
+- In real scenarios, workers can crash from OOM, hardware failures, or planned deployments
+- Temporal guarantees no duplicate execution - completed steps don't re-execute after restart
+- Workflow history is immutable and provides complete audit trail even across restarts
+
+---
