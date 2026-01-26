@@ -387,6 +387,149 @@ In production airline systems:
 
 Temporal's durability guarantee means you can deploy new code, restart workers, or recover from failures without losing track of in-flight operations.
 
+## Workflow History and Audit Trail
+
+One of Temporal's powerful features is its **built-in audit trail** - every workflow execution maintains a complete, immutable history of all events. This is invaluable for compliance, debugging, and understanding exactly what happened during flight operations.
+
+### Viewing Workflow History
+
+#### Via Web UI
+
+1. Start a flight and let it progress through several states
+2. Send some signals (announce delay, change gate)
+3. Select the flight in the Active Flights list
+4. Click the **"📋 View Audit Trail"** button in the Flight Details panel
+5. A timeline view displays all workflow events with timestamps and descriptions
+6. Click **"📥 Export as JSON"** to download the complete history
+
+#### Via REST API
+
+Get the complete workflow history for a flight:
+
+```bash
+curl http://localhost:8080/api/flights/AA1234/history?flightDate=2026-01-26
+```
+
+Response (example):
+```json
+[
+  {
+    "eventId": 1,
+    "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_STARTED",
+    "timestamp": "2026-01-26 14:32:15",
+    "description": "Workflow execution started",
+    "category": "lifecycle"
+  },
+  {
+    "eventId": 5,
+    "eventType": "EVENT_TYPE_TIMER_STARTED",
+    "timestamp": "2026-01-26 14:32:16",
+    "description": "Timer started (state transition delay)",
+    "category": "timer"
+  },
+  {
+    "eventId": 12,
+    "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_SIGNALED",
+    "timestamp": "2026-01-26 14:32:20",
+    "description": "Signal received: announceDelay",
+    "category": "signal"
+  },
+  {
+    "eventId": 45,
+    "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_COMPLETED",
+    "timestamp": "2026-01-26 14:32:35",
+    "description": "Workflow execution completed successfully",
+    "category": "lifecycle"
+  }
+]
+```
+
+### Event Categories
+
+The history events are categorized for easier understanding:
+
+- **lifecycle** - Workflow start, completion, cancellation, termination
+- **signal** - Signals received (delays, gate changes, cancellations)
+- **timer** - State transition delays (using Workflow.sleep)
+- **task** - Workflow task scheduling and execution
+- **child_workflow** - Child workflow operations (for multi-leg journeys)
+- **other** - All other internal Temporal events
+
+### What the Audit Trail Includes
+
+Every workflow history contains:
+
+1. **All state transitions** - Complete record of flight lifecycle (SCHEDULED → BOARDING → DEPARTED → etc.)
+2. **Signals received** - Every delay announcement, gate change, or cancellation with timestamps
+3. **Activities executed** - Any activity invocations (future: crew notifications, passenger updates)
+4. **Timers fired** - All sleep operations between state transitions
+5. **Child workflows** - Multi-leg journey orchestration events
+6. **System events** - Worker task scheduling, execution details
+
+### Timeline View Features
+
+The web UI timeline provides:
+
+- **Visual indicators** - Color-coded dots for different event types
+- **Chronological ordering** - Events displayed in time order
+- **Event IDs** - Sequential event numbers for correlation
+- **Human-readable descriptions** - Friendly explanations of technical events
+- **Timestamps** - Precise timing for compliance and debugging
+
+### Exporting History
+
+The export functionality creates a JSON file containing:
+
+```json
+{
+  "flightNumber": "AA1234",
+  "exportedAt": "2026-01-26T14:35:00Z",
+  "eventCount": 45,
+  "history": [
+    // Complete event array
+  ]
+}
+```
+
+This file can be:
+- Archived for regulatory compliance
+- Analyzed for operational insights
+- Used for debugging production issues
+- Shared with support teams for investigation
+
+### Use Cases for Audit Trail
+
+**Compliance & Regulatory**
+- Prove exactly when decisions were made (gate changes, delays, cancellations)
+- Demonstrate system behavior during incidents
+- Maintain immutable records for audits
+
+**Debugging & Support**
+- Understand why a flight ended in an unexpected state
+- See exact sequence of events leading to issues
+- Identify timing problems or race conditions
+
+**Operations & Analytics**
+- Analyze typical flight progression patterns
+- Measure time between state transitions
+- Identify bottlenecks in flight operations
+
+**Incident Investigation**
+- Reconstruct what happened during system failures
+- Verify that signals were received and processed
+- Confirm workflows recovered correctly after restarts
+
+### Why Temporal's Audit Trail is Valuable
+
+Unlike application logs that can be lost or rotated:
+- **Immutable** - History cannot be modified or deleted
+- **Complete** - No gaps, every decision is recorded
+- **Persistent** - Survives worker restarts and failures
+- **Queryable** - Access at any time via API or UI
+- **Built-in** - No extra code needed, it's automatic
+
+For airline operations handling millions of dollars in assets and customer commitments, having a complete audit trail of every flight decision is invaluable for both operational excellence and regulatory compliance.
+
 ## Verifying the Setup
 
 Once all services are running, you should see:

@@ -4,6 +4,7 @@ import com.temporal.jetstream.dto.*;
 import com.temporal.jetstream.model.Flight;
 import com.temporal.jetstream.model.FlightState;
 import com.temporal.jetstream.service.FlightEventService;
+import com.temporal.jetstream.service.HistoryService;
 import com.temporal.jetstream.workflow.FlightWorkflow;
 import com.temporal.jetstream.workflow.MultiLegFlightWorkflow;
 import io.temporal.client.WorkflowClient;
@@ -32,6 +33,9 @@ public class FlightController {
 
     @Autowired
     private FlightEventService flightEventService;
+
+    @Autowired
+    private HistoryService historyService;
 
     @Value("${temporal.task-queue}")
     private String taskQueue;
@@ -283,6 +287,30 @@ public class FlightController {
             logger.error("Error querying details for flight {}: {}", flightNumber, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new ErrorResponse("QUERY_ERROR", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/{flightNumber}/history")
+    public ResponseEntity<?> getFlightHistory(
+            @PathVariable String flightNumber,
+            @RequestParam(required = false) String flightDate) {
+        try {
+            String workflowId = buildWorkflowId(flightNumber, flightDate);
+
+            List<WorkflowHistoryEvent> history = historyService.getWorkflowHistory(workflowId);
+
+            logger.info("Retrieved {} history events for flight {}", history.size(), flightNumber);
+
+            return ResponseEntity.ok(history);
+
+        } catch (WorkflowNotFoundException e) {
+            logger.error("Workflow not found for flight: {}", flightNumber);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new ErrorResponse("WORKFLOW_NOT_FOUND", "Flight not found: " + flightNumber));
+        } catch (Exception e) {
+            logger.error("Error retrieving history for flight {}: {}", flightNumber, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ErrorResponse("HISTORY_ERROR", e.getMessage()));
         }
     }
 

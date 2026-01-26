@@ -380,6 +380,106 @@ function addEventLog(flightNumber, state, message) {
     }
 }
 
+// History / Audit Trail
+let currentHistory = null;
+
+async function showHistoryModal() {
+    if (!selectedFlight) return;
+
+    const modal = new bootstrap.Modal(document.getElementById('historyModal'));
+    document.getElementById('historyFlightNumber').textContent = selectedFlight.flightNumber;
+
+    // Show loading state
+    document.getElementById('historyTimeline').innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading workflow history...</p>
+        </div>
+    `;
+
+    modal.show();
+
+    // Fetch history
+    try {
+        const response = await fetch(`/api/flights/${selectedFlight.flightNumber}/history`);
+        if (response.ok) {
+            currentHistory = await response.json();
+            renderHistoryTimeline(currentHistory);
+        } else {
+            const error = await response.json();
+            document.getElementById('historyTimeline').innerHTML = `
+                <div class="alert alert-danger">
+                    <strong>Error:</strong> ${error.message || 'Failed to load history'}
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error fetching history:', error);
+        document.getElementById('historyTimeline').innerHTML = `
+            <div class="alert alert-danger">
+                <strong>Error:</strong> Failed to load workflow history
+            </div>
+        `;
+    }
+}
+
+function renderHistoryTimeline(history) {
+    const timeline = document.getElementById('historyTimeline');
+
+    if (!history || history.length === 0) {
+        timeline.innerHTML = '<p class="text-muted text-center">No history events found</p>';
+        return;
+    }
+
+    timeline.innerHTML = '<div class="timeline"></div>';
+    const timelineDiv = timeline.querySelector('.timeline');
+
+    for (const event of history) {
+        const eventDiv = document.createElement('div');
+        eventDiv.className = `timeline-event ${event.category}`;
+
+        eventDiv.innerHTML = `
+            <div class="timeline-event-header">
+                <span class="timeline-event-id">#${event.eventId}</span>
+                <span class="timeline-event-timestamp">${event.timestamp}</span>
+            </div>
+            <div class="timeline-event-description">${event.description}</div>
+            <div class="timeline-event-type">${event.eventType}</div>
+        `;
+
+        timelineDiv.appendChild(eventDiv);
+    }
+}
+
+function exportHistory() {
+    if (!currentHistory || !selectedFlight) {
+        alert('No history data available to export');
+        return;
+    }
+
+    const exportData = {
+        flightNumber: selectedFlight.flightNumber,
+        exportedAt: new Date().toISOString(),
+        eventCount: currentHistory.length,
+        history: currentHistory
+    };
+
+    const dataStr = JSON.stringify(exportData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+
+    const downloadLink = document.createElement('a');
+    downloadLink.href = URL.createObjectURL(dataBlob);
+    downloadLink.download = `flight-${selectedFlight.flightNumber}-history-${new Date().toISOString().split('T')[0]}.json`;
+
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+
+    addEventLog(selectedFlight.flightNumber, 'AUDIT', 'Workflow history exported');
+}
+
 // Utility functions
 function formatDateTime(isoString) {
     if (!isoString) return 'N/A';
