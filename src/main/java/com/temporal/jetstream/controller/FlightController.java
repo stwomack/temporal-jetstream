@@ -7,6 +7,10 @@ import com.temporal.jetstream.service.FlightEventService;
 import com.temporal.jetstream.service.HistoryService;
 import com.temporal.jetstream.workflow.FlightWorkflow;
 import com.temporal.jetstream.workflow.MultiLegFlightWorkflow;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowNotFoundException;
 import io.temporal.client.WorkflowOptions;
@@ -24,6 +28,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/flights")
+@Tag(name = "Flights", description = "Flight lifecycle management endpoints")
 public class FlightController {
 
     private static final Logger logger = LoggerFactory.getLogger(FlightController.class);
@@ -40,6 +45,11 @@ public class FlightController {
     @Value("${temporal.task-queue}")
     private String taskQueue;
 
+    @Operation(summary = "Start a multi-leg journey", description = "Creates a multi-leg flight journey workflow with linked flight segments")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Journey workflow started successfully"),
+            @ApiResponse(responseCode = "500", description = "Failed to start journey workflow")
+    })
     @PostMapping("/journey")
     public ResponseEntity<?> startJourney(@Valid @RequestBody StartJourneyRequest request) {
         try {
@@ -98,6 +108,11 @@ public class FlightController {
         }
     }
 
+    @Operation(summary = "Start a single flight workflow", description = "Creates and starts a Temporal workflow for a single flight")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Flight workflow started successfully"),
+            @ApiResponse(responseCode = "500", description = "Failed to start flight workflow")
+    })
     @PostMapping("/start")
     public ResponseEntity<?> startFlight(@Valid @RequestBody StartFlightRequest request) {
         try {
@@ -146,6 +161,12 @@ public class FlightController {
         }
     }
 
+    @Operation(summary = "Announce a flight delay", description = "Signals the flight workflow with a delay in minutes")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Delay announced successfully"),
+            @ApiResponse(responseCode = "404", description = "Flight workflow not found"),
+            @ApiResponse(responseCode = "500", description = "Failed to announce delay")
+    })
     @PostMapping("/{flightNumber}/delay")
     public ResponseEntity<?> announceDelay(
             @PathVariable String flightNumber,
@@ -178,6 +199,12 @@ public class FlightController {
         }
     }
 
+    @Operation(summary = "Change the gate assignment", description = "Signals the flight workflow with a new gate assignment")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Gate changed successfully"),
+            @ApiResponse(responseCode = "404", description = "Flight workflow not found"),
+            @ApiResponse(responseCode = "500", description = "Failed to change gate")
+    })
     @PostMapping("/{flightNumber}/gate")
     public ResponseEntity<?> changeGate(
             @PathVariable String flightNumber,
@@ -210,6 +237,12 @@ public class FlightController {
         }
     }
 
+    @Operation(summary = "Cancel a flight", description = "Signals the flight workflow to cancel with a reason")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Flight cancelled successfully"),
+            @ApiResponse(responseCode = "404", description = "Flight workflow not found"),
+            @ApiResponse(responseCode = "500", description = "Failed to cancel flight")
+    })
     @PostMapping("/{flightNumber}/cancel")
     public ResponseEntity<?> cancelFlight(
             @PathVariable String flightNumber,
@@ -240,6 +273,12 @@ public class FlightController {
         }
     }
 
+    @Operation(summary = "Get flight state", description = "Queries the current state of a flight workflow")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Flight state retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Flight workflow not found"),
+            @ApiResponse(responseCode = "500", description = "Failed to query flight state")
+    })
     @GetMapping("/{flightNumber}/state")
     public ResponseEntity<?> getFlightState(
             @PathVariable String flightNumber,
@@ -265,6 +304,12 @@ public class FlightController {
         }
     }
 
+    @Operation(summary = "Get flight details", description = "Queries the full details of a flight workflow including all flight data")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Flight details retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Flight workflow not found"),
+            @ApiResponse(responseCode = "500", description = "Failed to query flight details")
+    })
     @GetMapping("/{flightNumber}/details")
     public ResponseEntity<?> getFlightDetails(
             @PathVariable String flightNumber,
@@ -290,6 +335,12 @@ public class FlightController {
         }
     }
 
+    @Operation(summary = "Get flight workflow history", description = "Retrieves the Temporal workflow event history for a flight")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Flight history retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Flight workflow not found"),
+            @ApiResponse(responseCode = "500", description = "Failed to retrieve flight history")
+    })
     @GetMapping("/{flightNumber}/history")
     public ResponseEntity<?> getFlightHistory(
             @PathVariable String flightNumber,
