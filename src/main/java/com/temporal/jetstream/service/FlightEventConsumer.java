@@ -71,7 +71,7 @@ public class FlightEventConsumer {
         FlightEventType eventType = FlightEventType.valueOf(rootNode.get("eventType").asText());
         String flightNumber = rootNode.get("flightNumber").asText();
         LocalDate flightDate = LocalDate.parse(rootNode.get("flightDate").asText());
-        String data = rootNode.has("data") ? rootNode.get("data").toString() : null;
+        String data = rootNode.has("data") ? rootNode.get("data").asText() : null;
 
         return new FlightEvent(eventType, flightNumber, flightDate, data);
     }
