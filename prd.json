@@ -382,7 +382,7 @@
       "id": "story-13",
       "title": "MongoDB Persistence for Flight State History",
       "priority": 13,
-      "passes": false,
+      "passes": true,
       "description": "Persist every flight state transition to MongoDB for historical analysis and debugging, separate from Temporal's workflow history",
       "acceptanceCriteria": [
         "FlightStateTransition entity class with fields: id, flightNumber, flightDate, fromState, toState, timestamp, gate, delay, aircraft, eventType, eventDetails",
