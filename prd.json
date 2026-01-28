@@ -1,29 +1,31 @@
 {
   "title": "Temporal Jetstream - Airline Flight Lifecycle Orchestration Demo",
-  "branchName": "feature/temporal-jetstream",
+  "branchName": "feature/temporal-jetstream-v2",
   "description": "A demonstration application showing how Temporal provides durability, reliability, scalability, and consistency for multi-day airline flight lifecycle orchestration. Complements existing Kafka/Flink streaming architecture by providing durable execution guarantees for long-running flight processes.",
   "technicalContext": {
     "stack": "Java 21, Spring Boot (latest stable), Temporal Java SDK (latest stable), Maven",
     "infrastructure": [
-      "Temporal: Local dev server via 'temporal server start-dev' (NOT docker-compose)",
-      "Supporting services (Kafka, MongoDB): docker-compose.yml included",
-      "Embedded web UI with real-time updates (WebSockets or SSE)"
+      "Temporal: Local dev server via 'temporal server start-dev'",
+      "Kafka: Local via 'brew services start kafka' (includes Zookeeper)",
+      "MongoDB: Local via 'brew services start mongodb-community'",
+      "Flink: Local standalone cluster via 'start-flink' alias (not a brew service)"
     ],
     "requirements": [
       "All Spring dependencies must use LATEST STABLE versions - triple check versions before adding",
       "Include Maven wrapper (mvnw/mvnw.cmd) in project root",
       "Application runnable with: ./mvnw spring-boot:run",
-      "Docker-compose for Kafka and MongoDB only",
-      "README must include prerequisite: 'temporal server start-dev' running"
+      "NO docker-compose - all services run locally via brew/binaries",
+      "README must include prerequisite installation commands for all services"
     ]
   },
   "outOfScope": [
-    "Flink aggregations and real-time metrics (focus on orchestration, not stream processing)",
     "SOLVER integration (mock it with simulated responses)",
-    "Production-grade database schema (in-memory or simple MongoDB is fine)",
+    "Production-grade database schema (simple MongoDB is fine)",
     "Multi-region deployment (single region is sufficient)",
     "Comprehensive error handling for all edge cases",
-    "Authentication/authorization"
+    "Authentication/authorization",
+    "Complex Flink state management (simple stateless enrichment is sufficient)",
+    "Docker/container deployment"
   ],
   "coreValueProps": [
     "Durability: Flight state persists across worker restarts and failures",
@@ -343,6 +345,197 @@
         "Include links to Temporal documentation for deeper learning",
         "Demo script should take 5-10 minutes to execute",
         "Value props should map to actual demo features"
+      ]
+    },
+    {
+      "id": "story-12",
+      "title": "Kafka Producer and Consumer Implementation",
+      "priority": 12,
+      "passes": false,
+      "description": "Implement actual Kafka producer to publish flight state changes and consumer to trigger workflow signals from external events",
+      "acceptanceCriteria": [
+        "FlightEventProducer @Service publishes flight state transitions to 'flight-state-changes' Kafka topic",
+        "Every workflow state transition (SCHEDULED->BOARDING, etc.) publishes event to Kafka with: flightNumber, previousState, newState, timestamp, gate, delay",
+        "KafkaConsumer listens to 'flight-events' topic for external events (from simulated airline systems)",
+        "Consumer processes events and sends signals to appropriate workflows: DELAY event -> announceDelay signal, GATE_CHANGE event -> changeGate signal, CANCEL event -> cancelFlight signal",
+        "FlightController endpoints also publish to Kafka when signals are sent via REST API",
+        "Add KafkaTemplate bean properly configured in KafkaProducerConfig",
+        "Kafka topics 'flight-events' and 'flight-state-changes' created via kafka-topics command (documented in README)",
+        "Integration test publishes event to 'flight-events', verifies workflow receives signal and publishes state change to 'flight-state-changes'",
+        "Application can start without Kafka (graceful degradation with warning logs, not startup failure)",
+        "README updated with: brew install kafka, brew services start kafka, kafka-topics commands to create topics",
+        "README includes Kafka architecture diagram showing: External Events -> flight-events topic -> Consumer -> Workflow Signals -> State Changes -> flight-state-changes topic",
+        "./mvnw test passes with Kafka integration tests",
+        "Verify: Start Kafka via brew, create topics, start app, start flight via UI, watch state changes in 'flight-state-changes' topic via kafka-console-consumer"
+      ],
+      "technicalNotes": [
+        "Use @KafkaListener with specific topic and consumer group",
+        "Producer should be called from workflow Activities, not directly from workflow code (workflows must be deterministic)",
+        "Create FlightEventActivity that publishes to Kafka",
+        "Handle Kafka serialization with Jackson for JSON events",
+        "Make Kafka dependency optional with @ConditionalOnProperty",
+        "Kafka runs on localhost:9092 by default with brew",
+        "Document topic creation: kafka-topics --create --topic flight-events --bootstrap-server localhost:9092"
+      ]
+    },
+    {
+      "id": "story-13",
+      "title": "MongoDB Persistence for Flight State History",
+      "priority": 13,
+      "passes": false,
+      "description": "Persist every flight state transition to MongoDB for historical analysis and debugging, separate from Temporal's workflow history",
+      "acceptanceCriteria": [
+        "FlightStateTransition entity class with fields: id, flightNumber, flightDate, fromState, toState, timestamp, gate, delay, aircraft, eventType, eventDetails",
+        "FlightStateTransitionRepository extends MongoRepository",
+        "PersistenceActivity implements @ActivityInterface with method: saveStateTransition(FlightStateTransition)",
+        "Workflow calls PersistenceActivity after every state transition",
+        "MongoDB collection 'flight_state_transitions' stores complete history of all transitions",
+        "REST endpoint GET /api/flights/{flightNumber}/transition-history queries MongoDB and returns all transitions for flight",
+        "Transitions sorted by timestamp descending (most recent first)",
+        "MongoDB running via 'brew services start mongodb-community' on localhost:27017",
+        "Integration test verifies: start flight, send signals, query MongoDB, confirm all transitions saved",
+        "UI displays MongoDB transition history alongside Temporal workflow history (compare both audit trails)",
+        "./mvnw test passes with MongoDB integration tests",
+        "README includes: brew install mongodb-community, brew services start mongodb-community",
+        "README explains: Temporal provides workflow execution history, MongoDB provides business state history for analytics",
+        "Verify: Start MongoDB via brew, start app, complete flight workflow, query /api/flights/{flightNumber}/transition-history"
+      ],
+      "technicalNotes": [
+        "Use spring-boot-starter-data-mongodb",
+        "Activity must be registered with worker and called from workflow via Workflow.newActivityStub()",
+        "Use @Document annotation for entity",
+        "Index on flightNumber and timestamp for query performance",
+        "MongoDB connection string: mongodb://localhost:27017/temporal-jetstream",
+        "Activity should have retry policy configured for MongoDB connection failures"
+      ]
+    },
+    {
+      "id": "story-14",
+      "title": "Flink Stream Processing Integration",
+      "priority": 14,
+      "passes": false,
+      "description": "Add Flink job that enriches flight events from Kafka before they reach Temporal workflows, demonstrating Flink + Temporal architecture pattern",
+      "acceptanceCriteria": [
+        "Flink job module/package with FlinkEnrichmentJob class (separate from main Spring Boot app)",
+        "Flink job consumes from 'raw-flight-events' Kafka topic",
+        "Flink enriches events with calculated fields: estimatedDelay (simple calculation), riskScore (based on delay threshold), enrichedTimestamp",
+        "Flink writes enriched events to 'flight-events' topic (which existing KafkaConsumer reads)",
+        "Flink standalone cluster runs via 'start-flink' alias",
+        "Flink job JAR built via Maven and submitted via 'flink run' command",
+        "FlinkEnrichmentJob uses Kafka source and sink connectors (flink-connector-kafka)",
+        "README includes: 'brew install apache-flink'",
+        "README includes creating aliases: alias start-flink='/opt/homebrew/Cellar/apache-flink/2.2.0/libexec/bin/start-cluster.sh', alias stop-flink='/opt/homebrew/Cellar/apache-flink/2.2.0/libexec/bin/stop-cluster.sh'",
+        "README notes: Add these aliases to ~/.zshrc or ~/.bash_profile for persistence",
+        "README includes submit command: 'flink run -c com.example.FlinkEnrichmentJob target/flink-job.jar'",
+        "Test publishes raw event to 'raw-flight-events', verifies enriched event appears in 'flight-events' with additional fields",
+        "Workflow consumer logs show enriched fields when processing events",
+        "README architecture diagram updated to show: Raw Events -> Flink (enrich) -> Processed Events -> Kafka Consumer -> Temporal Workflows",
+        "README explains: Flink handles stateful stream processing and enrichment, Temporal handles durable orchestration",
+        "README includes note: Flink cluster runs as standalone process via aliases, not as brew service (no plist available)",
+        "Verify: Start Flink cluster via 'start-flink', submit job, publish raw event, see enriched event trigger workflow",
+        "Flink Web UI accessible at localhost:8081 showing running job"
+      ],
+      "technicalNotes": [
+        "Flink installed via brew at /opt/homebrew/Cellar/apache-flink/VERSION/libexec",
+        "Start cluster via alias: start-flink",
+        "Stop cluster via alias: stop-flink",
+        "Flink job can be simple Java DataStream API job",
+        "Use Flink Kafka connectors: flink-connector-kafka",
+        "Enrichment logic: add timestamp, calculate risk score (delay > 60 = high, delay > 30 = medium, else low)",
+        "Flink state not required - stateless map() function is fine",
+        "Build separate Maven module or package Flink job as separate JAR",
+        "Flink connects to Kafka at localhost:9092",
+        "Job can be submitted once and runs continuously",
+        "Document how to stop job: flink list, flink cancel <job-id>"
+      ]
+    },
+    {
+      "id": "story-15",
+      "title": "Fix Active Flights Panel in Web UI",
+      "priority": 15,
+      "passes": false,
+      "description": "Fix the Active Flights panel that currently shows no data - it should display all currently running flight workflows",
+      "acceptanceCriteria": [
+        "Active Flights panel displays list of all workflows with execution status NOT 'Completed' or 'Cancelled'",
+        "Each active flight shows: flightNumber, currentState, gate, delay, elapsed time since workflow started",
+        "Backend endpoint GET /api/flights/active queries Temporal for running workflows",
+        "Use WorkflowClient.listWorkflows() with WorkflowQuery filtering for non-completed executions",
+        "UI polls /api/flights/active every 5 seconds to refresh list (or use WebSocket/SSE for real-time updates)",
+        "Clicking on active flight navigates to detail view showing full flight information",
+        "Panel shows 'No active flights' message when empty",
+        "UI updates in real-time as flights transition to COMPLETED or CANCELLED (they disappear from Active panel)",
+        "Integration test starts 3 flights, verifies /api/flights/active returns 3, completes 1 flight, verifies only 2 remain in active list",
+        "./mvnw test passes with active flights tests",
+        "Verify in browser: Start multiple flights, see them appear in Active Flights panel, complete one, watch it disappear from panel"
+      ],
+      "technicalNotes": [
+        "Use WorkflowServiceStubs to access WorkflowService for listing workflows",
+        "Filter by WorkflowExecutionStatus to exclude completed/cancelled/failed",
+        "Query each workflow for current state using workflow.getCurrentState()",
+        "Consider pagination if many active flights (limit to 50 or add pagination UI)",
+        "This is critical for demo - must show active monitoring capability",
+        "Use ListWorkflowExecutionsRequest with appropriate filters"
+      ]
+    },
+    {
+      "id": "story-16",
+      "title": "Realistic Workflow Timing and Demo Mode",
+      "priority": 16,
+      "passes": false,
+      "description": "Adjust workflow timing to reflect realistic multi-day flight lifecycle with special DEMO mode for faster demonstrations",
+      "acceptanceCriteria": [
+        "Default workflow timing uses realistic durations: SCHEDULED->BOARDING (2-3 hours before departure), BOARDING->DEPARTED (30 minutes), DEPARTED->IN_FLIGHT (actual flight duration based on distance), IN_FLIGHT->LANDED (arrival time), LANDED->COMPLETED (30 minutes)",
+        "Workflow checks if flightNumber starts with 'DEMO' prefix or has isDemoMode flag set to true",
+        "DEMO mode flights use accelerated timing: scale all durations down by factor of 120 (e.g., 2 hours becomes 1 minute)",
+        "Non-DEMO flights use realistic timing that reflects actual airline operations (hours to days)",
+        "Flight creation UI has checkbox 'Demo Mode (120x speed)' that prefixes flightNumber with 'DEMO' or sets isDemoMode flag",
+        "UI displays timing mode indicator for each flight: 'Real-time' vs 'Demo Speed (120x)'",
+        "Workflow logs show actual sleep durations for debugging: 'Sleeping for 3600 seconds (1 hour)' or 'Sleeping for 30 seconds (1 minute in demo mode)'",
+        "README documents both modes and explains: Real-time mode shows true durability (workflows survive hours/days), Demo mode for quick presentations (5-10 minutes)",
+        "Integration test verifies DEMO flight completes in under 5 minutes, normal flight would take hours",
+        "./mvnw test passes with timing tests",
+        "Verify: Create normal flight (slow, realistic timing), create DEMO flight (fast), both complete successfully at different speeds"
+      ],
+      "technicalNotes": [
+        "Use Workflow.sleep(duration) with calculated durations based on demo mode",
+        "Add isDemoMode boolean field to Flight model as alternative to string prefix",
+        "Calculate realistic flight duration based on distance between departure and arrival stations (simple formula: distance/500mph avg)",
+        "Document that real flights demonstrate Temporal's multi-day durability value prop",
+        "For demo presentations, always use DEMO mode flights for speed",
+        "Consider making timing factor configurable via application.yml (default 120x for demo mode)"
+      ]
+    },
+    {
+      "id": "story-17",
+      "title": "Remove Docker Compose and Update All Documentation",
+      "priority": 17,
+      "passes": false,
+      "description": "Remove docker-compose.yml and update all documentation to reflect local services approach (brew services for Kafka/MongoDB, aliases for Flink)",
+      "acceptanceCriteria": [
+        "Delete docker-compose.yml file from project",
+        "README Prerequisites section lists: Java 21, Temporal CLI, Kafka (via brew), MongoDB (via brew), Flink (via brew)",
+        "README includes complete installation commands: 'brew install kafka', 'brew install mongodb-community', 'brew install apache-flink', 'brew install temporal'",
+        "README startup section explains: Kafka and MongoDB use 'brew services start', Flink uses 'start-flink' alias, Temporal uses 'temporal server start-dev'",
+        "README includes creating Flink aliases section with example: alias start-flink='/opt/homebrew/Cellar/apache-flink/2.2.0/libexec/bin/start-cluster.sh', alias stop-flink='/opt/homebrew/Cellar/apache-flink/2.2.0/libexec/bin/stop-cluster.sh'",
+        "README notes: Add aliases to ~/.zshrc or ~/.bash_profile for persistence, adjust version number in path if needed",
+        "README includes Kafka topic creation commands: 'kafka-topics --create --topic flight-events --bootstrap-server localhost:9092', same for 'flight-state-changes' and 'raw-flight-events'",
+        "README Quick Start section has clear step-by-step with all startup commands using aliases where applicable",
+        "README Troubleshooting section includes: checking Kafka/MongoDB with 'brew services list', checking Flink at localhost:8081, common connection issues",
+        "All acceptance criteria in other stories that mentioned docker-compose are updated to reference appropriate service startup method",
+        "application.yml uses localhost URLs: Kafka localhost:9092, MongoDB localhost:27017, Temporal localhost:7233, Flink localhost:8081",
+        "No references to docker, docker-compose, or containers anywhere in codebase or docs",
+        "README includes service shutdown: 'brew services stop kafka/mongodb-community', 'stop-flink' for Flink",
+        "README notes: Flink runs as standalone process via aliases, not managed by brew services (no plist available)",
+        "Verify: Fresh macOS install, follow README install steps, create aliases, all services start successfully, application runs"
+      ],
+      "technicalNotes": [
+        "Kafka via brew includes Zookeeper automatically",
+        "MongoDB via brew creates data directory at /opt/homebrew/var/mongodb",
+        "Flink via brew installs to /opt/homebrew/Cellar/apache-flink/VERSION/libexec",
+        "Flink doesn't have a plist so it can't run as a brew service - aliases are the best approach",
+        "Document default ports: Kafka 9092, MongoDB 27017, Temporal 7233, Flink Web UI 8081",
+        "Aliases make Flink startup/shutdown simple: start-flink, stop-flink",
+        "This simplifies local development - no container networking issues"
       ]
     }
   ]

@@ -3,6 +3,7 @@ package com.temporal.jetstream.controller;
 import com.temporal.jetstream.dto.*;
 import com.temporal.jetstream.model.Flight;
 import com.temporal.jetstream.model.FlightState;
+import com.temporal.jetstream.service.FlightEventProducer;
 import com.temporal.jetstream.service.FlightEventService;
 import com.temporal.jetstream.service.HistoryService;
 import com.temporal.jetstream.workflow.FlightWorkflow;
@@ -38,6 +39,9 @@ public class FlightController {
 
     @Autowired
     private FlightEventService flightEventService;
+
+    @Autowired
+    private FlightEventProducer flightEventProducer;
 
     @Autowired
     private HistoryService historyService;
@@ -180,10 +184,21 @@ public class FlightController {
 
             logger.info("Sent delay signal to flight {}: {} minutes", flightNumber, request.getMinutes());
 
-            // Publish event to WebSocket clients
+            // Query workflow for current state
             FlightWorkflow queryWorkflow = getWorkflowStub(workflowId);
             Flight updatedFlight = queryWorkflow.getFlightDetails();
+
+            // Publish event to WebSocket clients
             flightEventService.publishFlightUpdate(updatedFlight);
+
+            // Publish event to Kafka
+            flightEventProducer.publishStateChange(
+                flightNumber,
+                updatedFlight.getCurrentState(),
+                updatedFlight.getCurrentState(),
+                updatedFlight.getGate(),
+                request.getMinutes()
+            );
 
             return ResponseEntity.ok()
                     .body(new ErrorResponse("SUCCESS", String.format("Delay of %d minutes announced", request.getMinutes())));
@@ -218,10 +233,21 @@ public class FlightController {
 
             logger.info("Sent gate change signal to flight {}: {}", flightNumber, request.getNewGate());
 
-            // Publish event to WebSocket clients
+            // Query workflow for current state
             FlightWorkflow queryWorkflow = getWorkflowStub(workflowId);
             Flight updatedFlight = queryWorkflow.getFlightDetails();
+
+            // Publish event to WebSocket clients
             flightEventService.publishFlightUpdate(updatedFlight);
+
+            // Publish event to Kafka
+            flightEventProducer.publishStateChange(
+                flightNumber,
+                updatedFlight.getCurrentState(),
+                updatedFlight.getCurrentState(),
+                request.getNewGate(),
+                updatedFlight.getDelay()
+            );
 
             return ResponseEntity.ok()
                     .body(new ErrorResponse("SUCCESS", String.format("Gate changed to %s", request.getNewGate())));
@@ -256,8 +282,21 @@ public class FlightController {
 
             logger.info("Sent cancel signal to flight {}: {}", flightNumber, request.getReason());
 
+            // Query workflow for current state
+            FlightWorkflow queryWorkflow = getWorkflowStub(workflowId);
+            Flight updatedFlight = queryWorkflow.getFlightDetails();
+
             // Publish event to WebSocket clients
             flightEventService.publishStateChange(flightNumber, FlightState.CANCELLED, "Flight cancelled: " + request.getReason());
+
+            // Publish event to Kafka
+            flightEventProducer.publishStateChange(
+                flightNumber,
+                updatedFlight.getCurrentState(),
+                FlightState.CANCELLED,
+                updatedFlight.getGate(),
+                updatedFlight.getDelay()
+            );
 
             return ResponseEntity.ok()
                     .body(new ErrorResponse("SUCCESS", "Flight cancelled: " + request.getReason()));

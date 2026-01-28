@@ -1,5 +1,6 @@
 package com.temporal.jetstream.config;
 
+import com.temporal.jetstream.activity.FlightEventActivityImpl;
 import com.temporal.jetstream.workflow.FlightWorkflow;
 import com.temporal.jetstream.workflow.FlightWorkflowImpl;
 import com.temporal.jetstream.workflow.MultiLegFlightWorkflowImpl;
@@ -11,6 +12,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,6 +24,9 @@ public class TemporalConfig {
 
     @Value("${temporal.task-queue}")
     private String taskQueue;
+
+    @Autowired
+    private FlightEventActivityImpl flightEventActivity;
 
     private WorkerFactory workerFactory;
 
@@ -46,6 +51,10 @@ public class TemporalConfig {
         Worker worker = workerFactory.newWorker(taskQueue);
         worker.registerWorkflowImplementationTypes(FlightWorkflowImpl.class, MultiLegFlightWorkflowImpl.class);
         logger.info("Registered FlightWorkflowImpl and MultiLegFlightWorkflowImpl for task queue: {}", taskQueue);
+
+        // Register activities
+        worker.registerActivitiesImplementations(flightEventActivity);
+        logger.info("Registered FlightEventActivity for task queue: {}", taskQueue);
 
         // Start the worker factory immediately after registration
         workerFactory.start();

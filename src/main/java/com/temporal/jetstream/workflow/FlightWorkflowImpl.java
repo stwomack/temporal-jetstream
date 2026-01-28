@@ -1,7 +1,9 @@
 package com.temporal.jetstream.workflow;
 
+import com.temporal.jetstream.activity.FlightEventActivity;
 import com.temporal.jetstream.model.Flight;
 import com.temporal.jetstream.model.FlightState;
+import io.temporal.activity.ActivityOptions;
 import io.temporal.workflow.Workflow;
 import org.slf4j.Logger;
 
@@ -20,6 +22,14 @@ public class FlightWorkflowImpl implements FlightWorkflow {
     // Instance variable to track current flight state for queries
     private Flight currentFlight = null;
 
+    // Activity stub for publishing state changes to Kafka
+    private final FlightEventActivity flightEventActivity = Workflow.newActivityStub(
+        FlightEventActivity.class,
+        ActivityOptions.newBuilder()
+            .setStartToCloseTimeout(Duration.ofSeconds(10))
+            .build()
+    );
+
     @Override
     public Flight executeFlight(Flight flight) {
         logger.info("Starting flight workflow for: {}", flight.getFlightNumber());
@@ -34,18 +44,21 @@ public class FlightWorkflowImpl implements FlightWorkflow {
 
         // Determine sleep duration - use longer duration for demo flights
         Duration sleepDuration = flight.getFlightNumber().startsWith("DEMO")
-            ? Duration.ofSeconds(5)
-            : Duration.ofSeconds(2);
+            ? Duration.ofSeconds(240)
+            : Duration.ofSeconds(60);
 
         // SCHEDULED -> BOARDING
         flight.setCurrentState(FlightState.SCHEDULED);
         logger.info("Flight {} is SCHEDULED", flight.getFlightNumber());
+        publishStateTransition(flight, null, FlightState.SCHEDULED);
         Workflow.sleep(sleepDuration);
 
         // Check for cancellation
         if (cancelled) {
+            FlightState previousState = flight.getCurrentState();
             flight.setCurrentState(FlightState.CANCELLED);
             logger.info("Flight {} was CANCELLED: {}", flight.getFlightNumber(), cancellationReason);
+            publishStateTransition(flight, previousState, FlightState.CANCELLED);
             updateFlightWithSignalData(flight);
             return flight;
         }
@@ -53,12 +66,15 @@ public class FlightWorkflowImpl implements FlightWorkflow {
         // BOARDING
         flight.setCurrentState(FlightState.BOARDING);
         logger.info("Flight {} is BOARDING", flight.getFlightNumber());
+        publishStateTransition(flight, FlightState.SCHEDULED, FlightState.BOARDING);
         Workflow.sleep(sleepDuration);
 
         // Check for cancellation
         if (cancelled) {
+            FlightState previousState = flight.getCurrentState();
             flight.setCurrentState(FlightState.CANCELLED);
             logger.info("Flight {} was CANCELLED: {}", flight.getFlightNumber(), cancellationReason);
+            publishStateTransition(flight, previousState, FlightState.CANCELLED);
             updateFlightWithSignalData(flight);
             return flight;
         }
@@ -66,12 +82,15 @@ public class FlightWorkflowImpl implements FlightWorkflow {
         // DEPARTED
         flight.setCurrentState(FlightState.DEPARTED);
         logger.info("Flight {} has DEPARTED", flight.getFlightNumber());
+        publishStateTransition(flight, FlightState.BOARDING, FlightState.DEPARTED);
         Workflow.sleep(sleepDuration);
 
         // Check for cancellation
         if (cancelled) {
+            FlightState previousState = flight.getCurrentState();
             flight.setCurrentState(FlightState.CANCELLED);
             logger.info("Flight {} was CANCELLED: {}", flight.getFlightNumber(), cancellationReason);
+            publishStateTransition(flight, previousState, FlightState.CANCELLED);
             updateFlightWithSignalData(flight);
             return flight;
         }
@@ -79,12 +98,15 @@ public class FlightWorkflowImpl implements FlightWorkflow {
         // IN_FLIGHT
         flight.setCurrentState(FlightState.IN_FLIGHT);
         logger.info("Flight {} is IN_FLIGHT", flight.getFlightNumber());
+        publishStateTransition(flight, FlightState.DEPARTED, FlightState.IN_FLIGHT);
         Workflow.sleep(sleepDuration);
 
         // Check for cancellation
         if (cancelled) {
+            FlightState previousState = flight.getCurrentState();
             flight.setCurrentState(FlightState.CANCELLED);
             logger.info("Flight {} was CANCELLED: {}", flight.getFlightNumber(), cancellationReason);
+            publishStateTransition(flight, previousState, FlightState.CANCELLED);
             updateFlightWithSignalData(flight);
             return flight;
         }
@@ -92,11 +114,13 @@ public class FlightWorkflowImpl implements FlightWorkflow {
         // LANDED
         flight.setCurrentState(FlightState.LANDED);
         logger.info("Flight {} has LANDED", flight.getFlightNumber());
+        publishStateTransition(flight, FlightState.IN_FLIGHT, FlightState.LANDED);
         Workflow.sleep(sleepDuration);
 
         // COMPLETED
         flight.setCurrentState(FlightState.COMPLETED);
         logger.info("Flight {} is COMPLETED", flight.getFlightNumber());
+        publishStateTransition(flight, FlightState.LANDED, FlightState.COMPLETED);
 
         // Update flight with any signal data received during execution
         updateFlightWithSignalData(flight);
@@ -129,6 +153,26 @@ public class FlightWorkflowImpl implements FlightWorkflow {
         }
         if (currentGate != null) {
             flight.setGate(currentGate);
+        }
+    }
+
+    /**
+     * Publishes a state transition event to Kafka via activity.
+     */
+    private void publishStateTransition(Flight flight, FlightState previousState, FlightState newState) {
+        try {
+            String prevState = previousState != null ? previousState.toString() : null;
+            String gate = currentGate != null ? currentGate : (flight.getGate() != null ? flight.getGate() : "");
+            flightEventActivity.publishStateChange(
+                flight.getFlightNumber(),
+                prevState,
+                newState.toString(),
+                gate,
+                delayMinutes
+            );
+        } catch (Exception e) {
+            logger.warn("Failed to publish state transition to Kafka: {}", e.getMessage());
+            // Don't fail the workflow if Kafka publishing fails
         }
     }
 

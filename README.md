@@ -180,13 +180,42 @@ Verify services are running:
 docker-compose ps
 ```
 
-### 3. Build the Application
+### 3. Create Kafka Topics
+
+Create the required Kafka topics for event ingestion and state change publishing:
+
+```bash
+# Create flight-events topic (for external events → workflows)
+docker exec temporal-jetstream-kafka-1 kafka-topics \
+  --create \
+  --topic flight-events \
+  --bootstrap-server localhost:9092 \
+  --partitions 1 \
+  --replication-factor 1
+
+# Create flight-state-changes topic (for workflow state changes → downstream systems)
+docker exec temporal-jetstream-kafka-1 kafka-topics \
+  --create \
+  --topic flight-state-changes \
+  --bootstrap-server localhost:9092 \
+  --partitions 1 \
+  --replication-factor 1
+
+# Verify topics were created
+docker exec temporal-jetstream-kafka-1 kafka-topics \
+  --list \
+  --bootstrap-server localhost:9092
+```
+
+**Note:** Kafka auto-creates topics by default, but explicit creation ensures proper configuration.
+
+### 4. Build the Application
 
 ```bash
 ./mvnw clean install
 ```
 
-### 4. Run the Application
+### 5. Run the Application
 
 ```bash
 ./mvnw spring-boot:run
@@ -914,20 +943,25 @@ Unlike application logs that can be lost or rotated:
 
 For airline operations handling millions of dollars in assets and customer commitments, having a complete audit trail of every flight decision is invaluable for both operational excellence and regulatory compliance.
 
-## Kafka Integration for Event Ingestion
+## Kafka Integration - Producer and Consumer
 
-The application demonstrates how Temporal complements existing streaming architectures by integrating with Apache Kafka. Flight events published to Kafka topics are automatically consumed and translated into workflow signals, enabling event-driven workflow orchestration.
+The application demonstrates how Temporal complements existing streaming architectures by integrating with Apache Kafka in both directions: consuming external events to drive workflows AND publishing state changes for downstream systems.
 
 ### Architecture Overview
 
 ```
-External Systems → Kafka (flight-events topic) → FlightEventConsumer → Temporal Workflow Signals → Flight State Updates
+External Systems → Kafka (flight-events) → FlightEventConsumer → Workflow Signals → State Changes
+                                                                                         ↓
+                                                                    FlightEventActivity (via Activity)
+                                                                                         ↓
+                                                                    Kafka (flight-state-changes) → Downstream Systems
 ```
 
-This integration shows how:
-- **Kafka** handles high-throughput event streaming from external systems (radar, gate systems, crew apps)
-- **Temporal** provides durable orchestration of multi-step flight processes
-- **Together** they create a robust event-driven architecture where events drive workflow state machines
+This bidirectional integration shows how:
+- **Kafka Consumer**: External events (delays, gate changes) drive workflow state transitions via signals
+- **Kafka Producer**: Every workflow state transition publishes events for downstream analytics and monitoring
+- **Temporal**: Provides durable orchestration with complete audit trail
+- **Together**: They create a robust event-driven architecture with visibility into all state changes
 
 ### Supported Event Types
 
@@ -1007,11 +1041,33 @@ kafka-console-producer --broker-list localhost:9092 --topic flight-events
 To see messages being consumed from the flight-events topic:
 
 ```bash
-# View messages in the flight-events topic
+# View incoming events (external systems → workflows)
 docker exec -it temporal-jetstream-kafka-1 kafka-console-consumer \
   --bootstrap-server localhost:9092 \
   --topic flight-events \
   --from-beginning
+```
+
+To see state changes published by workflows:
+
+```bash
+# View outgoing state changes (workflows → downstream systems)
+docker exec -it temporal-jetstream-kafka-1 kafka-console-consumer \
+  --bootstrap-server localhost:9092 \
+  --topic flight-state-changes \
+  --from-beginning
+```
+
+**State change event format:**
+```json
+{
+  "flightNumber": "AA1234",
+  "previousState": "SCHEDULED",
+  "newState": "BOARDING",
+  "timestamp": "2026-01-27T10:30:00",
+  "gate": "B12",
+  "delay": 0
+}
 ```
 
 #### Running Integration Tests
@@ -1028,7 +1084,7 @@ The project includes comprehensive Kafka integration tests:
 
 These tests use **EmbeddedKafka** for fast, isolated testing without external dependencies.
 
-### How It Works
+### How the Consumer Works (Event Ingestion)
 
 1. **FlightEventConsumer** listens to the `flight-events` Kafka topic using `@KafkaListener`
 2. When an event arrives, it's deserialized from JSON into a `FlightEvent` object
@@ -1037,6 +1093,22 @@ These tests use **EmbeddedKafka** for fast, isolated testing without external de
 5. The appropriate signal method is called on the workflow (`announceDelay`, `changeGate`, `cancelFlight`)
 6. The workflow processes the signal and updates its state accordingly
 7. State changes are broadcast to the WebSocket clients for real-time UI updates
+
+### How the Producer Works (State Change Publishing)
+
+1. **FlightWorkflowImpl** uses `FlightEventActivity` (Temporal Activity) to publish state changes
+2. After each state transition (SCHEDULED → BOARDING → DEPARTED, etc.), the workflow calls the activity
+3. **FlightEventActivityImpl** invokes **FlightEventProducer** service
+4. **FlightEventProducer** serializes state change to JSON and publishes to `flight-state-changes` Kafka topic
+5. Published events include: flightNumber, previousState, newState, timestamp, gate, delay
+6. Activities ensure Kafka publishing happens outside the workflow (non-deterministic operations)
+7. REST API signals (via FlightController) also publish to Kafka when they update flight state
+
+**Why Activities?**
+- Workflows must be deterministic (no external calls like Kafka directly from workflow code)
+- Activities handle side effects like publishing to external systems
+- Activities have retry policies configured for resilience
+- If Kafka is unavailable, activity retries ensure eventual delivery
 
 ### Application Logs
 
