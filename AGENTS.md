@@ -9,7 +9,8 @@ This file contains consolidated learnings from implementing the Temporal Jetstre
 - **Temporal Java SDK 1.32.1** connecting to localhost:7233
 - **Maven wrapper** (`./mvnw`) for all build commands
 - Application runs on **port 8080**
-- docker-compose manages **Kafka** and **MongoDB** (NOT Temporal - it runs separately via `temporal server start-dev`)
+- **Kafka** and **MongoDB** run via Homebrew services (NOT Temporal - it runs separately via `temporal server start-dev`)
+- **Flink** runs via aliases: `start-flink` and `stop-flink` (not a brew service)
 
 ### Project Structure
 ```
@@ -227,10 +228,14 @@ class FlightWorkflowTest {
 # Terminal 1: Start Temporal
 temporal server start-dev
 
-# Terminal 2: Start Docker services
-docker-compose up -d
+# Terminal 2: Start Kafka and MongoDB via Homebrew
+brew services start kafka
+brew services start mongodb-community
 
-# Terminal 3: Run application
+# Terminal 3: Start Flink
+start-flink
+
+# Terminal 4: Run application
 ./mvnw spring-boot:run
 ```
 
@@ -254,9 +259,6 @@ curl http://localhost:8080/api/flights/AA1234/details?flightDate=2026-01-26
 ### Testing Kafka Integration
 
 ```bash
-# Connect to Kafka container
-docker exec -it temporal-jetstream-kafka-1 /bin/bash
-
 # Produce event
 kafka-console-producer --broker-list localhost:9092 --topic flight-events
 
@@ -264,8 +266,7 @@ kafka-console-producer --broker-list localhost:9092 --topic flight-events
 {"eventType":"DELAY_ANNOUNCED","flightNumber":"AA1234","flightDate":"2026-01-26","data":"{\"delayMinutes\":30}"}
 
 # Consume events (different terminal)
-docker exec -it temporal-jetstream-kafka-1 kafka-console-consumer \
-  --bootstrap-server localhost:9092 \
+kafka-console-consumer --bootstrap-server localhost:9092 \
   --topic flight-events \
   --from-beginning
 ```

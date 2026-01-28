@@ -156,33 +156,19 @@ Together, they create a comprehensive airline operations platform:
 Before running the application, ensure you have the following installed:
 
 - **Java 21** - [Download from Oracle](https://www.oracle.com/java/technologies/downloads/#java21) or use SDKMAN
-- **Docker & Docker Compose** - For running Kafka and MongoDB
-- **Temporal Server** - Running locally via `temporal server start-dev`
-- **Apache Flink** - For stream processing and event enrichment
+- **Temporal CLI** - For running Temporal Server locally
+- **Apache Kafka** - Event streaming platform (via Homebrew)
+- **MongoDB** - Document database for state persistence (via Homebrew)
+- **Apache Flink** - Stream processing and event enrichment (via Homebrew)
 
-### Installing Temporal CLI
+### Installation Commands (macOS)
 
 ```bash
-# macOS
+# Install all required services via Homebrew
 brew install temporal
-
-# Linux
-curl -sSf https://temporal.download/cli.sh | sh
-
-# Windows (via Scoop)
-scoop install temporal
-```
-
-### Installing Apache Flink
-
-```bash
-# macOS
+brew install kafka
+brew install mongodb-community
 brew install apache-flink
-
-# Linux - download and extract from Apache Flink website
-wget https://dlcdn.apache.org/flink/flink-2.0.0/flink-2.0.0-bin-scala_2.12.tgz
-tar -xzf flink-2.0.0-bin-scala_2.12.tgz
-sudo mv flink-2.0.0 /opt/flink
 ```
 
 ### Setting Up Flink Aliases (macOS)
@@ -191,14 +177,25 @@ Flink doesn't run as a brew service (no plist available), so we use aliases for 
 
 ```bash
 # Add these to ~/.zshrc or ~/.bash_profile
-alias start-flink='/opt/homebrew/Cellar/apache-flink/2.0.0/libexec/bin/start-cluster.sh'
-alias stop-flink='/opt/homebrew/Cellar/apache-flink/2.0.0/libexec/bin/stop-cluster.sh'
+alias start-flink='/opt/homebrew/Cellar/apache-flink/VERSION/libexec/bin/start-cluster.sh'
+alias stop-flink='/opt/homebrew/Cellar/apache-flink/VERSION/libexec/bin/stop-cluster.sh'
+
+# Replace VERSION with your installed version. Check with:
+ls /opt/homebrew/Cellar/apache-flink/
+
+# Example for version 1.19.1:
+alias start-flink='/opt/homebrew/Cellar/apache-flink/1.19.1/libexec/bin/start-cluster.sh'
+alias stop-flink='/opt/homebrew/Cellar/apache-flink/1.19.1/libexec/bin/stop-cluster.sh'
 
 # Reload your shell configuration
 source ~/.zshrc  # or source ~/.bash_profile
 ```
 
-**Note:** Adjust the version number in the path if you have a different Flink version installed. Check with `ls /opt/homebrew/Cellar/apache-flink/` to see your installed version.
+**Important Notes:**
+- Kafka via brew includes Zookeeper automatically
+- MongoDB data directory: `/opt/homebrew/var/mongodb`
+- Flink must be started via aliases (not a brew service)
+- Adjust Flink version number in aliases based on your installation
 
 ## Quick Start
 
@@ -212,22 +209,26 @@ temporal server start-dev
 
 This will start Temporal on `localhost:7233` with the Web UI available at `http://localhost:8233`.
 
-### 2. Start Supporting Services
+### 2. Start Kafka and MongoDB
 
-Start Kafka and MongoDB using Docker Compose:
+Start Kafka and MongoDB using Homebrew services:
 
 ```bash
-docker-compose up -d
+# Start Kafka (includes Zookeeper)
+brew services start kafka
+
+# Start MongoDB
+brew services start mongodb-community
+
+# Verify services are running
+brew services list
 ```
 
-Verify services are running:
-```bash
-docker-compose ps
-```
+Expected output should show kafka and mongodb-community as "started".
 
 ### 3. Start Apache Flink
 
-Start the Flink standalone cluster:
+Start the Flink standalone cluster using the alias:
 
 ```bash
 start-flink
@@ -246,33 +247,28 @@ Create the required Kafka topics for event ingestion and state change publishing
 
 ```bash
 # Create raw-flight-events topic (for external events → Flink enrichment)
-docker exec temporal-jetstream-kafka-1 kafka-topics \
-  --create \
+kafka-topics --create \
   --topic raw-flight-events \
   --bootstrap-server localhost:9092 \
   --partitions 1 \
   --replication-factor 1
 
 # Create flight-events topic (for Flink enriched events → workflows)
-docker exec temporal-jetstream-kafka-1 kafka-topics \
-  --create \
+kafka-topics --create \
   --topic flight-events \
   --bootstrap-server localhost:9092 \
   --partitions 1 \
   --replication-factor 1
 
 # Create flight-state-changes topic (for workflow state changes → downstream systems)
-docker exec temporal-jetstream-kafka-1 kafka-topics \
-  --create \
+kafka-topics --create \
   --topic flight-state-changes \
   --bootstrap-server localhost:9092 \
   --partitions 1 \
   --replication-factor 1
 
 # Verify topics were created
-docker exec temporal-jetstream-kafka-1 kafka-topics \
-  --list \
-  --bootstrap-server localhost:9092
+kafka-topics --list --bootstrap-server localhost:9092
 ```
 
 **Note:** Kafka auto-creates topics by default, but explicit creation ensures proper configuration.
@@ -388,9 +384,12 @@ Before starting the demo, ensure all services are healthy:
 # Check Temporal is accessible
 temporal namespace list
 
-# Check Docker services
-docker-compose ps
-# Should see: kafka, zookeeper, mongodb all running
+# Check Homebrew services
+brew services list
+# Should see: kafka and mongodb-community with status "started"
+
+# Check Flink is running
+curl http://localhost:8081
 
 # Check application is running
 curl http://localhost:8080/api/flights/AA1234/state?flightDate=2026-01-26 || echo "App ready for flights"
@@ -399,6 +398,7 @@ curl http://localhost:8080/api/flights/AA1234/state?flightDate=2026-01-26 || ech
 Open these URLs in separate browser tabs:
 - **Application UI:** http://localhost:8080
 - **Temporal Web UI:** http://localhost:8233
+- **Flink Web UI:** http://localhost:8081
 
 ### Step 2: Start a Flight Workflow
 
@@ -534,10 +534,7 @@ Demonstrate how external events from Kafka automatically drive workflow signals.
 
 **Publish an Event to Kafka:**
 ```bash
-# Connect to Kafka container
-docker exec -it temporal-jetstream-kafka-1 /bin/bash
-
-# Inside the container, start the console producer
+# Start the Kafka console producer
 kafka-console-producer --broker-list localhost:9092 --topic flight-events
 
 # Paste this event (then press Enter and Ctrl+D):
@@ -624,8 +621,7 @@ curl -X POST http://localhost:8080/api/flights/AA1234/cancel?flightDate=2026-01-
 **Monitor Kafka:**
 ```bash
 # View all messages in flight-events topic
-docker exec -it temporal-jetstream-kafka-1 kafka-console-consumer \
-  --bootstrap-server localhost:9092 \
+kafka-console-consumer --bootstrap-server localhost:9092 \
   --topic flight-events \
   --from-beginning
 ```
@@ -1183,10 +1179,7 @@ Events published to the `flight-events` topic should follow this JSON schema:
 You can use the Kafka console producer to manually publish test events:
 
 ```bash
-# Connect to Kafka container
-docker exec -it temporal-jetstream-kafka-1 /bin/bash
-
-# Produce a test event
+# Start the console producer
 kafka-console-producer --broker-list localhost:9092 --topic flight-events
 
 # Then paste an event (Ctrl+D to exit):
@@ -1199,8 +1192,7 @@ To see messages being consumed from the flight-events topic:
 
 ```bash
 # View incoming events (external systems → workflows)
-docker exec -it temporal-jetstream-kafka-1 kafka-console-consumer \
-  --bootstrap-server localhost:9092 \
+kafka-console-consumer --bootstrap-server localhost:9092 \
   --topic flight-events \
   --from-beginning
 ```
@@ -1209,8 +1201,7 @@ To see state changes published by workflows:
 
 ```bash
 # View outgoing state changes (workflows → downstream systems)
-docker exec -it temporal-jetstream-kafka-1 kafka-console-consumer \
-  --bootstrap-server localhost:9092 \
+kafka-console-consumer --bootstrap-server localhost:9092 \
   --topic flight-state-changes \
   --from-beginning
 ```
@@ -1419,24 +1410,19 @@ flink list
 
 ```bash
 # Publish a delay event to raw-flight-events topic
-docker exec -i temporal-jetstream-kafka-1 kafka-console-producer \
-  --broker-list localhost:9092 \
-  --topic raw-flight-events << EOF
-{
+echo '{
   "eventType": "DELAY_ANNOUNCED",
   "flightNumber": "AA1234",
   "flightDate": "2026-01-27",
   "data": "{\"delayMinutes\":45}"
-}
-EOF
+}' | kafka-console-producer --broker-list localhost:9092 --topic raw-flight-events
 ```
 
 #### 2. Verify Enriched Event in flight-events Topic
 
 ```bash
 # Monitor flight-events topic to see enriched event
-docker exec temporal-jetstream-kafka-1 kafka-console-consumer \
-  --bootstrap-server localhost:9092 \
+kafka-console-consumer --bootstrap-server localhost:9092 \
   --topic flight-events \
   --from-beginning
 ```
@@ -1640,14 +1626,18 @@ This side-by-side comparison demonstrates:
 
 **Prerequisites:**
 ```bash
-# Start MongoDB via Docker (already included in docker-compose.yml)
-docker-compose up -d mongodb
+# Start MongoDB via Homebrew
+brew services start mongodb-community
+
+# Verify MongoDB is running
+brew services list | grep mongodb
 ```
 
 **Database Configuration:**
 - Database name: `temporal-jetstream`
 - Collection: `flight_state_transitions`
 - Connection string: `mongodb://localhost:27017/temporal-jetstream`
+- Data directory: `/opt/homebrew/var/mongodb`
 
 **Configuration in application.yml:**
 ```yaml
@@ -1731,8 +1721,9 @@ Started Application in X seconds
 - **Java 21** - Modern Java LTS version
 - **Spring Boot 4.0.1** - Latest stable Spring Boot framework
 - **Temporal Java SDK 1.32.1** - Workflow orchestration
-- **Apache Kafka 7.8.0** - Event streaming
-- **MongoDB 8.0** - Document persistence
+- **Apache Kafka** (via Homebrew) - Event streaming
+- **MongoDB** (via Homebrew) - Document persistence
+- **Apache Flink** (via Homebrew) - Stream processing
 - **WebSockets** - Real-time UI updates
 
 ## Project Structure
@@ -1742,13 +1733,22 @@ temporal-jetstream/
 ├── src/
 │   ├── main/
 │   │   ├── java/com/temporal/jetstream/
-│   │   │   └── Application.java
+│   │   │   ├── Application.java
+│   │   │   ├── config/          # Spring and Temporal configuration
+│   │   │   ├── workflow/        # Temporal workflow definitions
+│   │   │   ├── activity/        # Temporal activities
+│   │   │   ├── controller/      # REST API controllers
+│   │   │   ├── service/         # Business services
+│   │   │   ├── model/           # Domain models
+│   │   │   ├── dto/             # Data transfer objects
+│   │   │   ├── repository/      # MongoDB repositories
+│   │   │   └── flink/           # Flink jobs
 │   │   └── resources/
-│   │       └── application.yml
+│   │       ├── application.yml  # Application configuration
+│   │       └── static/          # Web UI (HTML, CSS, JS)
 │   └── test/
 │       └── java/com/temporal/jetstream/
 ├── pom.xml
-├── docker-compose.yml
 └── README.md
 ```
 
@@ -1757,8 +1757,12 @@ temporal-jetstream/
 Stop the application with `Ctrl+C`, then stop supporting services:
 
 ```bash
-# Stop Docker services
-docker-compose down
+# Stop Homebrew services
+brew services stop kafka
+brew services stop mongodb-community
+
+# Stop Flink cluster
+stop-flink
 
 # Stop Temporal server
 # Press Ctrl+C in the Temporal server terminal
@@ -1780,14 +1784,38 @@ This is the initial project setup. Future stories will add:
 
 - Verify Java version: `java -version` (should be 21)
 - Check Temporal is running: `temporal server start-dev`
-- Ensure ports are available: 8080 (app), 7233 (Temporal), 9092 (Kafka), 27017 (MongoDB)
+- Ensure ports are available: 8080 (app), 7233 (Temporal), 9092 (Kafka), 27017 (MongoDB), 8081 (Flink)
+- Verify all services are running: `brew services list`
 
-### Docker services won't start
+### Services won't start
 
 ```bash
-# Remove old containers and volumes
-docker-compose down -v
-docker-compose up -d
+# Restart Kafka and MongoDB
+brew services restart kafka
+brew services restart mongodb-community
+
+# Check service status
+brew services list
+
+# Check service logs
+tail -f /opt/homebrew/var/log/kafka/server.log
+tail -f /opt/homebrew/var/log/mongodb/mongo.log
+```
+
+### Flink cluster won't start
+
+```bash
+# Stop existing cluster
+stop-flink
+
+# Check for conflicting processes on port 8081
+lsof -i :8081
+
+# Start fresh
+start-flink
+
+# Verify Flink Web UI is accessible
+curl http://localhost:8081
 ```
 
 ### Tests failing
@@ -1799,9 +1827,26 @@ docker-compose up -d
 
 ### Kafka consumer not receiving messages
 
-- Verify Kafka is running: `docker-compose ps`
+- Verify Kafka is running: `brew services list | grep kafka`
 - Check application logs for "Received Kafka message"
 - Ensure flight workflow is started before publishing events (workflow must exist to receive signals)
+- Verify topics exist: `kafka-topics --list --bootstrap-server localhost:9092`
+
+### MongoDB connection errors
+
+- Verify MongoDB is running: `brew services list | grep mongodb`
+- Check MongoDB logs: `tail -f /opt/homebrew/var/log/mongodb/mongo.log`
+- Verify connection: `mongosh mongodb://localhost:27017/temporal-jetstream`
+- Check data directory permissions: `ls -la /opt/homebrew/var/mongodb`
+
+### Default Ports
+
+- **Application**: 8080
+- **Temporal Server**: 7233
+- **Temporal Web UI**: 8233
+- **Kafka**: 9092
+- **MongoDB**: 27017
+- **Flink Web UI**: 8081
 
 ## Contributing
 
@@ -1829,7 +1874,7 @@ Contributions are welcome! This is a demonstration project showing Temporal best
 - Performance optimization for high-throughput scenarios
 - Additional test coverage
 - Documentation enhancements
-- Example deployments (Kubernetes, Docker Swarm)
+- Example deployments (Kubernetes, cloud platforms)
 
 **Bug Fixes:**
 - Report issues via GitHub Issues
