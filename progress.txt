@@ -830,3 +830,59 @@
 - Loose coupling via Kafka topics allows independent scaling and failure isolation
 
 ---
+## 2026-01-27 21:27 - story-15
+
+**What was implemented:**
+- Created ActiveFlightDTO class to represent active flight information with fields: workflowId, flightNumber, currentState, gate, delay, startTime, elapsedTime
+- Implemented ActiveFlightService to query Temporal for running workflows:
+  - Uses WorkflowServiceStubs.listWorkflowExecutions() with query filter for Running workflows
+  - Filters by WorkflowType='FlightWorkflow' and ExecutionStatus='Running'
+  - Extracts flight number from workflow ID format (flight-AA1234-2026-01-27)
+  - Queries each workflow for current flight details via FlightWorkflow.getFlightDetails()
+  - Calculates elapsed time from workflow start time to present
+- Added GET /api/flights/active endpoint to FlightController:
+  - Returns list of all active (running) flight workflows
+  - Autowires ActiveFlightService for workflow listing
+- Updated Web UI (app.js) to poll and display active flights:
+  - Added refreshActiveFlights() function to fetch from /api/flights/active every 5 seconds
+  - Loads active flights on page load
+  - Clears and repopulates activeFlights map with server data
+  - Flight cards now display: state, gate, delay, and elapsed time (e.g., "2m 15s")
+  - Added formatDuration() function to parse Java Duration format (PT#H#M#S) into readable format
+  - Updated selectFlight() to fetch full flight details when a flight is clicked
+- Created comprehensive test suite (ActiveFlightServiceTest):
+  - testGetActiveFlights_ReturnsRunningWorkflows: Verifies multiple running workflows are queried correctly
+  - testWorkflowQuery_ReturnsFlightDetails: Tests workflow query for flight details
+  - testExtractFlightNumber_FromWorkflowId: Tests flight number extraction logic
+  - All tests pass successfully
+
+**Files changed:**
+- src/main/java/com/temporal/jetstream/dto/ActiveFlightDTO.java (created)
+- src/main/java/com/temporal/jetstream/service/ActiveFlightService.java (created)
+- src/main/java/com/temporal/jetstream/controller/FlightController.java (added /active endpoint)
+- src/main/resources/static/app.js (updated refreshActiveFlights, formatDuration, selectFlight)
+- src/test/java/com/temporal/jetstream/service/ActiveFlightServiceTest.java (created)
+- prd.json (updated story-15 passes: true)
+
+**Learnings for future iterations:**
+- Temporal's ListWorkflowExecutionsRequest requires namespace, query string, and page size
+- Query string format: "WorkflowType='FlightWorkflow' AND ExecutionStatus='Running'"
+- WorkflowServiceStubs.blockingStub().listWorkflowExecutions() provides access to workflow listing API
+- ListWorkflowExecutionsResponse contains WorkflowExecutionInfo for each workflow
+- WorkflowExecutionInfo provides execution metadata: workflowId, startTime, executionStatus
+- Elapsed time calculated from executionInfo.getStartTime() (Timestamp with seconds and nanos)
+- Active Flights panel updates every 5 seconds via setInterval in JavaScript
+- Duration format from Java (PT2M15S) needs parsing for display: PT = Period/Time, H = hours, M = minutes, S = seconds
+- ActiveFlights map is cleared and repopulated on each refresh to remove completed workflows
+- Clicking on active flight triggers async fetch for full flight details (route, aircraft, scheduled times)
+- Flight cards simplified for active flights view (show essential info: state, gate, delay, runtime)
+- Testing ListWorkflowExecutions API in TestWorkflowEnvironment works differently than production
+- TestWorkflowExtension provides test workflows that can be queried via WorkflowClient
+- Active flights endpoint critical for monitoring and demo purposes
+- Shows real-time visibility into all running workflow instances
+- Demonstrates Temporal's workflow introspection capabilities
+- ActiveFlightService logs workflow count for debugging: "Found N running flight workflows"
+- WorkflowNotFoundException handled gracefully when workflow completes between list and query
+- All quality checks passed: compile successful, all tests passing (including 3 new tests)
+
+---
