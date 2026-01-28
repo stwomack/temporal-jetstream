@@ -82,6 +82,7 @@ async function startFlight() {
     const arrivalStation = document.getElementById('arrivalStation').value;
     const gate = document.getElementById('gate').value;
     const aircraft = document.getElementById('aircraft').value;
+    const demoMode = document.getElementById('demoMode').checked;
 
     const now = new Date();
     const departure = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 hours from now
@@ -95,7 +96,8 @@ async function startFlight() {
         scheduledDeparture: departure.toISOString(),
         scheduledArrival: arrival.toISOString(),
         gate: gate,
-        aircraft: aircraft
+        aircraft: aircraft,
+        demoMode: demoMode
     };
 
     try {
@@ -221,6 +223,11 @@ function createFlightCard(flight) {
     const stateClass = flight.currentState || 'SCHEDULED';
     const delayText = flight.delay > 0 ? `<span class="delay-indicator">+${flight.delay} min delay</span>` : '';
 
+    // Determine timing mode - check both isDemoMode field and DEMO prefix for backward compatibility
+    const isDemoMode = flight.isDemoMode || (flight.flightNumber && flight.flightNumber.startsWith('DEMO'));
+    const timingMode = isDemoMode ? 'Demo Speed (120x)' : 'Real-time';
+    const timingBadgeClass = isDemoMode ? 'bg-warning' : 'bg-info';
+
     card.innerHTML = `
         <div class="flight-header">
             <div class="flight-number">${flight.flightNumber}</div>
@@ -242,6 +249,10 @@ function createFlightCard(flight) {
             <div class="flight-info-item">
                 <span class="flight-info-label">Running</span>
                 <span class="flight-info-value">${flight.elapsedTime || 'N/A'}</span>
+            </div>
+            <div class="flight-info-item">
+                <span class="flight-info-label">Timing</span>
+                <span class="flight-info-value"><span class="badge ${timingBadgeClass}">${timingMode}</span></span>
             </div>
         </div>
     `;
@@ -286,6 +297,12 @@ function displayFlightDetails(flight) {
     document.getElementById('detailDelay').textContent = flight.delay || '0';
     document.getElementById('detailDeparture').textContent = formatDateTime(flight.scheduledDeparture);
     document.getElementById('detailArrival').textContent = formatDateTime(flight.scheduledArrival);
+
+    // Display timing mode
+    const isDemoMode = flight.demoMode || (flight.flightNumber && flight.flightNumber.startsWith('DEMO'));
+    const timingModeSpan = document.getElementById('detailTimingMode');
+    timingModeSpan.textContent = isDemoMode ? 'Demo Speed (120x)' : 'Real-time';
+    timingModeSpan.className = `badge ${isDemoMode ? 'bg-warning' : 'bg-info'}`;
 }
 
 // Signal operations

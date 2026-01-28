@@ -313,6 +313,69 @@ flink cancel <job-id>
 
 The application will start on `http://localhost:8080`.
 
+## Workflow Timing Modes
+
+The application supports two timing modes to accommodate different use cases:
+
+### Demo Mode (120x Speed) - Recommended for Presentations
+
+Demo Mode accelerates all workflow timing by a factor of 120x, making multi-hour flight lifecycles complete in minutes. This is ideal for:
+- **Live presentations and demos** - Show complete flight lifecycle in 3-5 minutes
+- **Development and testing** - Rapid iteration without waiting hours
+- **Training sessions** - Demonstrate all features quickly
+
+**How to enable:**
+- Via Web UI: Check "Demo Mode (120x speed)" checkbox when starting a flight (enabled by default)
+- Via REST API: Set `"demoMode": true` in the flight start request
+- Backward compatibility: Flight numbers starting with "DEMO" automatically use demo mode
+
+**Timing in Demo Mode:**
+- SCHEDULED → BOARDING: 2 hours → 1 minute
+- BOARDING → DEPARTED: 30 minutes → 15 seconds
+- DEPARTED → IN_FLIGHT: 5 minutes → 2.5 seconds
+- IN_FLIGHT → LANDED: Actual flight duration (e.g., 2 hours → 1 minute)
+- LANDED → COMPLETED: 30 minutes → 15 seconds
+
+**Total Demo Flight Duration:** ~3-5 minutes (depending on flight duration)
+
+### Real-time Mode - For Durability Demonstration
+
+Real-time Mode uses realistic airline operation timing, demonstrating Temporal's true durability and long-running workflow capabilities:
+- **Multi-day durability** - Workflows survive hours/days without data loss
+- **Production realism** - Timing matches actual airline operations
+- **Failure recovery testing** - Simulate failures during long workflows
+
+**How to enable:**
+- Via Web UI: Uncheck "Demo Mode (120x speed)" checkbox when starting a flight
+- Via REST API: Set `"demoMode": false` or omit the field
+
+**Timing in Real-time Mode:**
+- SCHEDULED → BOARDING: 2 hours (realistic pre-boarding period)
+- BOARDING → DEPARTED: 30 minutes (realistic boarding time)
+- DEPARTED → IN_FLIGHT: 5 minutes (taxi and takeoff)
+- IN_FLIGHT → LANDED: Actual flight duration (calculated from scheduled times, default 2 hours)
+- LANDED → COMPLETED: 30 minutes (deboarding and gate arrival)
+
+**Total Real-time Flight Duration:** ~5+ hours (demonstrates Temporal's durability)
+
+### Timing Mode Indicators
+
+The UI clearly shows which mode each flight is using:
+- **Active Flights Panel:** Each flight card displays a badge showing "Demo Speed (120x)" (yellow) or "Real-time" (blue)
+- **Flight Details Panel:** Shows timing mode in flight details
+- **Workflow Logs:** All sleep operations log actual duration and mode (e.g., "Sleeping for 1 minute (Demo Speed 120x)")
+
+### When to Use Each Mode
+
+| Use Case | Recommended Mode | Why |
+|----------|------------------|-----|
+| Live presentation | Demo Mode | Complete demo in 5-10 minutes |
+| Development/testing | Demo Mode | Fast feedback cycles |
+| Failure recovery demo | Demo Mode with longer duration | Visible but not too long |
+| Durability showcase | Real-time Mode | Prove workflows survive hours/days |
+| Production evaluation | Real-time Mode | See actual operational timing |
+| Training sessions | Demo Mode | Keep audience engaged |
+
 ## Complete Demo Script (5-10 minutes)
 
 This step-by-step script demonstrates all key features of the system. Follow along to see Temporal's durability, reliability, consistency, and scalability in action.
@@ -350,8 +413,9 @@ Open these URLs in separate browser tabs:
    - Scheduled Arrival: 5 hours from now
    - Gate: `A12`
    - Aircraft: `N123AA`
+   - **Demo Mode (120x speed)**: Keep checked for quick demo (3-5 minutes), uncheck for realistic multi-hour timing
 3. Click "Start Flight"
-4. Watch the flight appear in the Active Flights list
+4. Watch the flight appear in the Active Flights list with timing mode badge (yellow "Demo Speed 120x" or blue "Real-time")
 
 **Via REST API:**
 ```bash
@@ -365,9 +429,12 @@ curl -X POST http://localhost:8080/api/flights/start \
     "scheduledDeparture": "2026-01-26T14:00:00",
     "scheduledArrival": "2026-01-26T16:30:00",
     "gate": "A12",
-    "aircraft": "N123AA"
+    "aircraft": "N123AA",
+    "demoMode": true
   }'
 ```
+
+**Note:** Set `"demoMode": true` for quick demos (120x speed), or `false` for realistic multi-hour timing.
 
 **Expected Result:** Flight workflow starts and begins progressing through states: SCHEDULED → BOARDING → DEPARTED → IN_FLIGHT → LANDED → COMPLETED
 
