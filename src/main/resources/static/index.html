@@ -45,6 +45,15 @@
                                 <label for="aircraft" class="form-label">Aircraft</label>
                                 <input type="text" class="form-control" id="aircraft" placeholder="N123AA" required>
                             </div>
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="demoMode" checked>
+                                <label class="form-check-label" for="demoMode">
+                                    Demo Mode (120x speed) - Recommended for presentations
+                                </label>
+                                <small class="form-text text-muted d-block">
+                                    Unchecked: Realistic multi-hour/day timing for durability demo
+                                </small>
+                            </div>
                             <button type="submit" class="btn btn-primary w-100">Start Flight</button>
                         </form>
                     </div>
@@ -95,6 +104,7 @@
                                 <p><strong>Delay:</strong> <span id="detailDelay"></span> minutes</p>
                                 <p><strong>Departure:</strong> <span id="detailDeparture"></span></p>
                                 <p><strong>Arrival:</strong> <span id="detailArrival"></span></p>
+                                <p><strong>Timing Mode:</strong> <span id="detailTimingMode" class="badge"></span></p>
                             </div>
                         </div>
                         <hr>
@@ -159,16 +169,45 @@
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Workflow Audit Trail: <span id="historyFlightNumber"></span></h5>
+                    <h5 class="modal-title">Audit Trail: <span id="historyFlightNumber"></span></h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
-                    <div id="historyTimeline">
-                        <div class="text-center">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
+                    <!-- Tabs for different history views -->
+                    <ul class="nav nav-tabs mb-3" id="historyTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="workflow-history-tab" data-bs-toggle="tab" data-bs-target="#workflow-history" type="button" role="tab">
+                                Temporal Workflow History
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="mongodb-history-tab" data-bs-toggle="tab" data-bs-target="#mongodb-history" type="button" role="tab">
+                                MongoDB State Transitions
+                            </button>
+                        </li>
+                    </ul>
+                    <div class="tab-content" id="historyTabContent">
+                        <!-- Temporal Workflow History Tab -->
+                        <div class="tab-pane fade show active" id="workflow-history" role="tabpanel">
+                            <div id="historyTimeline">
+                                <div class="text-center">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p class="mt-2">Loading workflow history...</p>
+                                </div>
                             </div>
-                            <p class="mt-2">Loading workflow history...</p>
+                        </div>
+                        <!-- MongoDB State Transitions Tab -->
+                        <div class="tab-pane fade" id="mongodb-history" role="tabpanel">
+                            <div id="mongodbTransitions">
+                                <div class="text-center">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p class="mt-2">Loading state transitions...</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

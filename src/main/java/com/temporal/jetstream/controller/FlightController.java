@@ -3,10 +3,18 @@ package com.temporal.jetstream.controller;
 import com.temporal.jetstream.dto.*;
 import com.temporal.jetstream.model.Flight;
 import com.temporal.jetstream.model.FlightState;
+import com.temporal.jetstream.model.FlightStateTransition;
+import com.temporal.jetstream.repository.FlightStateTransitionRepository;
+import com.temporal.jetstream.service.ActiveFlightService;
+import com.temporal.jetstream.service.FlightEventProducer;
 import com.temporal.jetstream.service.FlightEventService;
 import com.temporal.jetstream.service.HistoryService;
 import com.temporal.jetstream.workflow.FlightWorkflow;
 import com.temporal.jetstream.workflow.MultiLegFlightWorkflow;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowNotFoundException;
 import io.temporal.client.WorkflowOptions;
@@ -24,6 +32,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/flights")
+@Tag(name = "Flights", description = "Flight lifecycle management endpoints")
 public class FlightController {
 
     private static final Logger logger = LoggerFactory.getLogger(FlightController.class);
@@ -35,11 +44,25 @@ public class FlightController {
     private FlightEventService flightEventService;
 
     @Autowired
+    private FlightEventProducer flightEventProducer;
+
+    @Autowired
     private HistoryService historyService;
+
+    @Autowired
+    private FlightStateTransitionRepository transitionRepository;
+
+    @Autowired
+    private ActiveFlightService activeFlightService;
 
     @Value("${temporal.task-queue}")
     private String taskQueue;
 
+    @Operation(summary = "Start a multi-leg journey", description = "Creates a multi-leg flight journey workflow with linked flight segments")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Journey workflow started successfully"),
+            @ApiResponse(responseCode = "500", description = "Failed to start journey workflow")
+    })
     @PostMapping("/journey")
     public ResponseEntity<?> startJourney(@Valid @RequestBody StartJourneyRequest request) {
         try {
@@ -98,6 +121,11 @@ public class FlightController {
         }
     }
 
+    @Operation(summary = "Start a single flight workflow", description = "Creates and starts a Temporal workflow for a single flight")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Flight workflow started successfully"),
+            @ApiResponse(responseCode = "500", description = "Failed to start flight workflow")
+    })
     @PostMapping("/start")
     public ResponseEntity<?> startFlight(@Valid @RequestBody StartFlightRequest request) {
         try {
@@ -146,6 +174,12 @@ public class FlightController {
         }
     }
 
+    @Operation(summary = "Announce a flight delay", description = "Signals the flight workflow with a delay in minutes")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Delay announced successfully"),
+            @ApiResponse(responseCode = "404", description = "Flight workflow not found"),
+            @ApiResponse(responseCode = "500", description = "Failed to announce delay")
+    })
     @PostMapping("/{flightNumber}/delay")
     public ResponseEntity<?> announceDelay(
             @PathVariable String flightNumber,
@@ -159,10 +193,21 @@ public class FlightController {
 
             logger.info("Sent delay signal to flight {}: {} minutes", flightNumber, request.getMinutes());
 
-            // Publish event to WebSocket clients
+            // Query workflow for current state
             FlightWorkflow queryWorkflow = getWorkflowStub(workflowId);
             Flight updatedFlight = queryWorkflow.getFlightDetails();
+
+            // Publish event to WebSocket clients
             flightEventService.publishFlightUpdate(updatedFlight);
+
+            // Publish event to Kafka
+            flightEventProducer.publishStateChange(
+                flightNumber,
+                updatedFlight.getCurrentState(),
+                updatedFlight.getCurrentState(),
+                updatedFlight.getGate(),
+                request.getMinutes()
+            );
 
             return ResponseEntity.ok()
                     .body(new ErrorResponse("SUCCESS", String.format("Delay of %d minutes announced", request.getMinutes())));
@@ -178,6 +223,12 @@ public class FlightController {
         }
     }
 
+    @Operation(summary = "Change the gate assignment", description = "Signals the flight workflow with a new gate assignment")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Gate changed successfully"),
+            @ApiResponse(responseCode = "404", description = "Flight workflow not found"),
+            @ApiResponse(responseCode = "500", description = "Failed to change gate")
+    })
     @PostMapping("/{flightNumber}/gate")
     public ResponseEntity<?> changeGate(
             @PathVariable String flightNumber,
@@ -191,10 +242,21 @@ public class FlightController {
 
             logger.info("Sent gate change signal to flight {}: {}", flightNumber, request.getNewGate());
 
-            // Publish event to WebSocket clients
+            // Query workflow for current state
             FlightWorkflow queryWorkflow = getWorkflowStub(workflowId);
             Flight updatedFlight = queryWorkflow.getFlightDetails();
+
+            // Publish event to WebSocket clients
             flightEventService.publishFlightUpdate(updatedFlight);
+
+            // Publish event to Kafka
+            flightEventProducer.publishStateChange(
+                flightNumber,
+                updatedFlight.getCurrentState(),
+                updatedFlight.getCurrentState(),
+                request.getNewGate(),
+                updatedFlight.getDelay()
+            );
 
             return ResponseEntity.ok()
                     .body(new ErrorResponse("SUCCESS", String.format("Gate changed to %s", request.getNewGate())));
@@ -210,6 +272,12 @@ public class FlightController {
         }
     }
 
+    @Operation(summary = "Cancel a flight", description = "Signals the flight workflow to cancel with a reason")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Flight cancelled successfully"),
+            @ApiResponse(responseCode = "404", description = "Flight workflow not found"),
+            @ApiResponse(responseCode = "500", description = "Failed to cancel flight")
+    })
     @PostMapping("/{flightNumber}/cancel")
     public ResponseEntity<?> cancelFlight(
             @PathVariable String flightNumber,
@@ -223,8 +291,21 @@ public class FlightController {
 
             logger.info("Sent cancel signal to flight {}: {}", flightNumber, request.getReason());
 
+            // Query workflow for current state
+            FlightWorkflow queryWorkflow = getWorkflowStub(workflowId);
+            Flight updatedFlight = queryWorkflow.getFlightDetails();
+
             // Publish event to WebSocket clients
             flightEventService.publishStateChange(flightNumber, FlightState.CANCELLED, "Flight cancelled: " + request.getReason());
+
+            // Publish event to Kafka
+            flightEventProducer.publishStateChange(
+                flightNumber,
+                updatedFlight.getCurrentState(),
+                FlightState.CANCELLED,
+                updatedFlight.getGate(),
+                updatedFlight.getDelay()
+            );
 
             return ResponseEntity.ok()
                     .body(new ErrorResponse("SUCCESS", "Flight cancelled: " + request.getReason()));
@@ -240,6 +321,12 @@ public class FlightController {
         }
     }
 
+    @Operation(summary = "Get flight state", description = "Queries the current state of a flight workflow")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Flight state retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Flight workflow not found"),
+            @ApiResponse(responseCode = "500", description = "Failed to query flight state")
+    })
     @GetMapping("/{flightNumber}/state")
     public ResponseEntity<?> getFlightState(
             @PathVariable String flightNumber,
@@ -265,6 +352,12 @@ public class FlightController {
         }
     }
 
+    @Operation(summary = "Get flight details", description = "Queries the full details of a flight workflow including all flight data")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Flight details retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Flight workflow not found"),
+            @ApiResponse(responseCode = "500", description = "Failed to query flight details")
+    })
     @GetMapping("/{flightNumber}/details")
     public ResponseEntity<?> getFlightDetails(
             @PathVariable String flightNumber,
@@ -290,6 +383,12 @@ public class FlightController {
         }
     }
 
+    @Operation(summary = "Get flight workflow history", description = "Retrieves the Temporal workflow event history for a flight")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Flight history retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Flight workflow not found"),
+            @ApiResponse(responseCode = "500", description = "Failed to retrieve flight history")
+    })
     @GetMapping("/{flightNumber}/history")
     public ResponseEntity<?> getFlightHistory(
             @PathVariable String flightNumber,
@@ -311,6 +410,61 @@ public class FlightController {
             logger.error("Error retrieving history for flight {}: {}", flightNumber, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new ErrorResponse("HISTORY_ERROR", e.getMessage()));
+        }
+    }
+
+    @Operation(summary = "Get flight state transition history from MongoDB",
+               description = "Retrieves business state transitions from MongoDB for historical analysis")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Transition history retrieved successfully"),
+            @ApiResponse(responseCode = "500", description = "Failed to retrieve transition history")
+    })
+    @GetMapping("/{flightNumber}/transition-history")
+    public ResponseEntity<?> getTransitionHistory(
+            @PathVariable String flightNumber,
+            @RequestParam(required = false) String flightDate) {
+        try {
+            List<FlightStateTransition> transitions;
+
+            if (flightDate != null) {
+                java.time.LocalDate date = java.time.LocalDate.parse(flightDate);
+                transitions = transitionRepository.findByFlightNumberAndFlightDateOrderByTimestampDesc(flightNumber, date);
+                logger.info("Retrieved {} state transitions from MongoDB for flight {} on {}",
+                           transitions.size(), flightNumber, flightDate);
+            } else {
+                transitions = transitionRepository.findByFlightNumberOrderByTimestampDesc(flightNumber);
+                logger.info("Retrieved {} state transitions from MongoDB for flight {} (all dates)",
+                           transitions.size(), flightNumber);
+            }
+
+            return ResponseEntity.ok(transitions);
+
+        } catch (Exception e) {
+            logger.error("Error retrieving transition history for flight {}: {}", flightNumber, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ErrorResponse("TRANSITION_HISTORY_ERROR", e.getMessage()));
+        }
+    }
+
+    @Operation(summary = "Get all active flights",
+               description = "Lists all currently running flight workflows")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Active flights retrieved successfully"),
+            @ApiResponse(responseCode = "500", description = "Failed to retrieve active flights")
+    })
+    @GetMapping("/active")
+    public ResponseEntity<?> getActiveFlights() {
+        try {
+            List<ActiveFlightDTO> activeFlights = activeFlightService.getActiveFlights();
+
+            logger.info("Retrieved {} active flights", activeFlights.size());
+
+            return ResponseEntity.ok(activeFlights);
+
+        } catch (Exception e) {
+            logger.error("Error retrieving active flights: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ErrorResponse("ACTIVE_FLIGHTS_ERROR", e.getMessage()));
         }
     }
 

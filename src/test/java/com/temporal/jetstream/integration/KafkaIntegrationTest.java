@@ -1,19 +1,29 @@
 package com.temporal.jetstream.integration;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.temporal.jetstream.kafka.KafkaTestProducer;
 import com.temporal.jetstream.model.Flight;
 import com.temporal.jetstream.model.FlightState;
 import com.temporal.jetstream.workflow.FlightWorkflow;
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowOptions;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.kafka.test.context.EmbeddedKafka;
+import org.springframework.kafka.test.utils.KafkaTestUtils;
 import org.springframework.test.annotation.DirtiesContext;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -23,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 @SpringBootTest
 @DirtiesContext
-@EmbeddedKafka(partitions = 1, topics = {"flight-events"})
+@EmbeddedKafka(partitions = 1, topics = {"flight-events", "flight-state-changes"})
 class KafkaIntegrationTest {
 
     @Autowired
@@ -152,6 +162,55 @@ class KafkaIntegrationTest {
         assertEquals("B10", details.getGate(), "Workflow should have received gate assignment from Kafka");
         assertEquals(30, details.getDelay(), "Workflow should have received delay from Kafka");
     }
+
+    @Test
+    void testWorkflowPublishesStateChangesToKafka() throws Exception {
+        // Given: Set up Kafka consumer for flight-state-changes topic
+        Map<String, Object> consumerProps = KafkaTestUtils.consumerProps("test-consumer-group", "true", embeddedKafka);
+        consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        consumerProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+
+        KafkaConsumer<String, String> consumer = new KafkaConsumer<>(consumerProps);
+        consumer.subscribe(Collections.singletonList("flight-state-changes"));
+
+        // When: Start a flight workflow
+        String flightNumber = "KF500";
+        LocalDate flightDate = LocalDate.now();
+        Flight flight = createTestFlight(flightNumber, flightDate);
+
+        String workflowId = "flight-" + flightNumber + "-" + flightDate;
+        WorkflowOptions options = WorkflowOptions.newBuilder()
+                .setWorkflowId(workflowId)
+                .setTaskQueue("flight-task-queue")
+                .build();
+
+        FlightWorkflow workflow = workflowClient.newWorkflowStub(FlightWorkflow.class, options);
+        WorkflowClient.start(workflow::executeFlight, flight);
+
+        // Then: Verify state change events are published to Kafka
+        boolean foundScheduledEvent = false;
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        // Poll for state change events (up to 10 seconds)
+        for (int i = 0; i < 10; i++) {
+            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
+            for (ConsumerRecord<String, String> record : records) {
+                Map<String, Object> event = objectMapper.readValue(record.value(), Map.class);
+                if ("SCHEDULED".equals(event.get("newState")) && flightNumber.equals(event.get("flightNumber"))) {
+                    foundScheduledEvent = true;
+                    break;
+                }
+            }
+            if (foundScheduledEvent) break;
+        }
+
+        consumer.close();
+        assertTrue(foundScheduledEvent, "Should have published SCHEDULED state change to Kafka");
+    }
+
+    @Autowired
+    private org.springframework.kafka.test.EmbeddedKafkaBroker embeddedKafka;
 
     private Flight createTestFlight(String flightNumber, LocalDate flightDate) {
         return new Flight(

@@ -5,7 +5,7 @@ spring:
   # MongoDB Configuration
   data:
     mongodb:
-      uri: mongodb://admin:admin@localhost:27017/jetstream?authSource=admin
+      uri: mongodb://localhost:27017/temporal-jetstream
 
   # Kafka Configuration
   kafka:

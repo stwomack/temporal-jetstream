@@ -9,38 +9,55 @@ A demonstration application showing how Temporal provides durability, reliabilit
 ```
 ┌─────────────────┐
 │  External       │
-│  Systems        │──┐
-│  (Gate, Crew,   │  │
-│   Weather, etc) │  │
-└─────────────────┘  │
-                     │
-                     ▼
-              ┌──────────────┐
-              │    Kafka     │◄────── High-throughput
-              │   (Events)   │        event streaming
-              └──────┬───────┘
-                     │
-          ┌──────────┴──────────┐
-          │                     │
-          ▼                     ▼
-    ┌─────────────┐      ┌─────────────┐
-    │    Flink    │      │  Temporal   │
-    │ (Analytics) │      │ (Workflow   │
-    │             │      │  Execution) │
-    └─────────────┘      └──────┬──────┘
-          │                     │
-          │              ┌──────┴──────┐
-          │              │             │
-          ▼              ▼             ▼
-    ┌──────────┐   ┌─────────┐  ┌───────────┐
-    │ Metrics  │   │ Flight  │  │ WebSocket │
-    │   DB     │   │ State   │  │  Updates  │
-    └──────────┘   └─────────┘  └─────┬─────┘
-                                       │
-                                       ▼
-                                 ┌──────────┐
-                                 │  Web UI  │
-                                 └──────────┘
+│  Systems        │
+│  (Gate, Crew,   │
+│   Weather, etc) │
+└────────┬────────┘
+         │ Publishes raw events
+         ▼
+┌─────────────────────┐
+│ Kafka: raw-flight-  │
+│        events       │
+└──────────┬──────────┘
+           │
+           ▼
+    ┌──────────────┐
+    │    Flink     │ ← Enriches events:
+    │  Enrichment  │   - estimatedDelay
+    │     Job      │   - riskScore
+    └──────┬───────┘   - enrichedTimestamp
+           │
+           ▼
+┌─────────────────────┐
+│ Kafka: flight-events│
+└──────────┬──────────┘
+           │
+           ▼
+    ┌──────────────┐
+    │  FlightEvent │ ← Sends signals
+    │   Consumer   │   to workflows
+    └──────┬───────┘
+           │
+           ▼
+    ┌──────────────┐
+    │   Temporal   │ ← Durable workflow
+    │   Workflows  │   orchestration
+    └──────┬───────┘
+           │
+    ┌──────┴──────┬──────────┐
+    │             │          │
+    ▼             ▼          ▼
+┌────────┐  ┌─────────┐  ┌─────────┐
+│MongoDB │  │  Kafka: │  │WebSocket│
+│History │  │flight-  │  │ Events  │
+│        │  │state-   │  │         │
+│        │  │changes  │  │         │
+└────────┘  └─────────┘  └────┬────┘
+                              │
+                              ▼
+                         ┌─────────┐
+                         │ Web UI  │
+                         └─────────┘
 ```
 
 ### How Temporal Complements Kafka/Flink
@@ -63,8 +80,8 @@ A demonstration application showing how Temporal provides durability, reliabilit
 
 Together, they create a comprehensive airline operations platform:
 - **Events flow through Kafka** (gate changes, delays, crew updates)
-- **Flink processes metrics** (on-time performance, capacity utilization)
-- **Temporal orchestrates workflows** (flight lifecycle, multi-leg journeys)
+- **Flink enriches events** (adds risk scores, delay estimates, calculated fields)
+- **Temporal orchestrates workflows** (flight lifecycle, multi-leg journeys, durable execution)
 
 ### The Four 'ilities: Temporal's Value Proposition
 
@@ -139,21 +156,46 @@ Together, they create a comprehensive airline operations platform:
 Before running the application, ensure you have the following installed:
 
 - **Java 21** - [Download from Oracle](https://www.oracle.com/java/technologies/downloads/#java21) or use SDKMAN
-- **Docker & Docker Compose** - For running Kafka and MongoDB
-- **Temporal Server** - Running locally via `temporal server start-dev`
+- **Temporal CLI** - For running Temporal Server locally
+- **Apache Kafka** - Event streaming platform (via Homebrew)
+- **MongoDB** - Document database for state persistence (via Homebrew)
+- **Apache Flink** - Stream processing and event enrichment (via Homebrew)
 
-### Installing Temporal CLI
+### Installation Commands (macOS)
 
 ```bash
-# macOS
+# Install all required services via Homebrew
 brew install temporal
-
-# Linux
-curl -sSf https://temporal.download/cli.sh | sh
-
-# Windows (via Scoop)
-scoop install temporal
+brew install kafka
+brew install mongodb-community
+brew install apache-flink
 ```
+
+### Setting Up Flink Aliases (macOS)
+
+Flink doesn't run as a brew service (no plist available), so we use aliases for convenience:
+
+```bash
+# Add these to ~/.zshrc or ~/.bash_profile
+alias start-flink='/opt/homebrew/Cellar/apache-flink/VERSION/libexec/bin/start-cluster.sh'
+alias stop-flink='/opt/homebrew/Cellar/apache-flink/VERSION/libexec/bin/stop-cluster.sh'
+
+# Replace VERSION with your installed version. Check with:
+ls /opt/homebrew/Cellar/apache-flink/
+
+# Example for version 1.19.1:
+alias start-flink='/opt/homebrew/Cellar/apache-flink/1.19.1/libexec/bin/start-cluster.sh'
+alias stop-flink='/opt/homebrew/Cellar/apache-flink/1.19.1/libexec/bin/stop-cluster.sh'
+
+# Reload your shell configuration
+source ~/.zshrc  # or source ~/.bash_profile
+```
+
+**Important Notes:**
+- Kafka via brew includes Zookeeper automatically
+- MongoDB data directory: `/opt/homebrew/var/mongodb`
+- Flink must be started via aliases (not a brew service)
+- Adjust Flink version number in aliases based on your installation
 
 ## Quick Start
 
@@ -167,32 +209,168 @@ temporal server start-dev
 
 This will start Temporal on `localhost:7233` with the Web UI available at `http://localhost:8233`.
 
-### 2. Start Supporting Services
+### 2. Start Kafka and MongoDB
 
-Start Kafka and MongoDB using Docker Compose:
+Start Kafka and MongoDB using Homebrew services:
 
 ```bash
-docker-compose up -d
+# Start Kafka (includes Zookeeper)
+brew services start kafka
+
+# Start MongoDB
+brew services start mongodb-community
+
+# Verify services are running
+brew services list
 ```
 
-Verify services are running:
+Expected output should show kafka and mongodb-community as "started".
+
+### 3. Start Apache Flink
+
+Start the Flink standalone cluster using the alias:
+
 ```bash
-docker-compose ps
+start-flink
 ```
 
-### 3. Build the Application
+Verify Flink is running by accessing the Web UI at `http://localhost:8081`.
+
+To stop Flink later:
+```bash
+stop-flink
+```
+
+### 4. Create Kafka Topics
+
+Create the required Kafka topics for event ingestion and state change publishing:
+
+```bash
+# Create raw-flight-events topic (for external events → Flink enrichment)
+kafka-topics --create \
+  --topic raw-flight-events \
+  --bootstrap-server localhost:9092 \
+  --partitions 1 \
+  --replication-factor 1
+
+# Create flight-events topic (for Flink enriched events → workflows)
+kafka-topics --create \
+  --topic flight-events \
+  --bootstrap-server localhost:9092 \
+  --partitions 1 \
+  --replication-factor 1
+
+# Create flight-state-changes topic (for workflow state changes → downstream systems)
+kafka-topics --create \
+  --topic flight-state-changes \
+  --bootstrap-server localhost:9092 \
+  --partitions 1 \
+  --replication-factor 1
+
+# Verify topics were created
+kafka-topics --list --bootstrap-server localhost:9092
+```
+
+**Note:** Kafka auto-creates topics by default, but explicit creation ensures proper configuration.
+
+### 5. Build the Application
 
 ```bash
 ./mvnw clean install
 ```
 
-### 4. Run the Application
+This will build both the Spring Boot application and the Flink enrichment job JAR (`target/flink-enrichment-job.jar`).
+
+### 6. Submit Flink Job
+
+Submit the Flink enrichment job to the running Flink cluster:
+
+```bash
+flink run -c com.temporal.jetstream.flink.FlinkEnrichmentJob target/flink-enrichment-job.jar
+```
+
+Verify the job is running in the Flink Web UI at `http://localhost:8081`.
+
+To list running jobs:
+```bash
+flink list
+```
+
+To cancel a job:
+```bash
+flink cancel <job-id>
+```
+
+### 7. Run the Application
 
 ```bash
 ./mvnw spring-boot:run
 ```
 
 The application will start on `http://localhost:8080`.
+
+## Workflow Timing Modes
+
+The application supports two timing modes to accommodate different use cases:
+
+### Demo Mode (120x Speed) - Recommended for Presentations
+
+Demo Mode accelerates all workflow timing by a factor of 120x, making multi-hour flight lifecycles complete in minutes. This is ideal for:
+- **Live presentations and demos** - Show complete flight lifecycle in 3-5 minutes
+- **Development and testing** - Rapid iteration without waiting hours
+- **Training sessions** - Demonstrate all features quickly
+
+**How to enable:**
+- Via Web UI: Check "Demo Mode (120x speed)" checkbox when starting a flight (enabled by default)
+- Via REST API: Set `"demoMode": true` in the flight start request
+- Backward compatibility: Flight numbers starting with "DEMO" automatically use demo mode
+
+**Timing in Demo Mode:**
+- SCHEDULED → BOARDING: 2 hours → 1 minute
+- BOARDING → DEPARTED: 30 minutes → 15 seconds
+- DEPARTED → IN_FLIGHT: 5 minutes → 2.5 seconds
+- IN_FLIGHT → LANDED: Actual flight duration (e.g., 2 hours → 1 minute)
+- LANDED → COMPLETED: 30 minutes → 15 seconds
+
+**Total Demo Flight Duration:** ~3-5 minutes (depending on flight duration)
+
+### Real-time Mode - For Durability Demonstration
+
+Real-time Mode uses realistic airline operation timing, demonstrating Temporal's true durability and long-running workflow capabilities:
+- **Multi-day durability** - Workflows survive hours/days without data loss
+- **Production realism** - Timing matches actual airline operations
+- **Failure recovery testing** - Simulate failures during long workflows
+
+**How to enable:**
+- Via Web UI: Uncheck "Demo Mode (120x speed)" checkbox when starting a flight
+- Via REST API: Set `"demoMode": false` or omit the field
+
+**Timing in Real-time Mode:**
+- SCHEDULED → BOARDING: 2 hours (realistic pre-boarding period)
+- BOARDING → DEPARTED: 30 minutes (realistic boarding time)
+- DEPARTED → IN_FLIGHT: 5 minutes (taxi and takeoff)
+- IN_FLIGHT → LANDED: Actual flight duration (calculated from scheduled times, default 2 hours)
+- LANDED → COMPLETED: 30 minutes (deboarding and gate arrival)
+
+**Total Real-time Flight Duration:** ~5+ hours (demonstrates Temporal's durability)
+
+### Timing Mode Indicators
+
+The UI clearly shows which mode each flight is using:
+- **Active Flights Panel:** Each flight card displays a badge showing "Demo Speed (120x)" (yellow) or "Real-time" (blue)
+- **Flight Details Panel:** Shows timing mode in flight details
+- **Workflow Logs:** All sleep operations log actual duration and mode (e.g., "Sleeping for 1 minute (Demo Speed 120x)")
+
+### When to Use Each Mode
+
+| Use Case | Recommended Mode | Why |
+|----------|------------------|-----|
+| Live presentation | Demo Mode | Complete demo in 5-10 minutes |
+| Development/testing | Demo Mode | Fast feedback cycles |
+| Failure recovery demo | Demo Mode with longer duration | Visible but not too long |
+| Durability showcase | Real-time Mode | Prove workflows survive hours/days |
+| Production evaluation | Real-time Mode | See actual operational timing |
+| Training sessions | Demo Mode | Keep audience engaged |
 
 ## Complete Demo Script (5-10 minutes)
 
@@ -206,9 +384,12 @@ Before starting the demo, ensure all services are healthy:
 # Check Temporal is accessible
 temporal namespace list
 
-# Check Docker services
-docker-compose ps
-# Should see: kafka, zookeeper, mongodb all running
+# Check Homebrew services
+brew services list
+# Should see: kafka and mongodb-community with status "started"
+
+# Check Flink is running
+curl http://localhost:8081
 
 # Check application is running
 curl http://localhost:8080/api/flights/AA1234/state?flightDate=2026-01-26 || echo "App ready for flights"
@@ -217,6 +398,7 @@ curl http://localhost:8080/api/flights/AA1234/state?flightDate=2026-01-26 || ech
 Open these URLs in separate browser tabs:
 - **Application UI:** http://localhost:8080
 - **Temporal Web UI:** http://localhost:8233
+- **Flink Web UI:** http://localhost:8081
 
 ### Step 2: Start a Flight Workflow
 
@@ -231,8 +413,9 @@ Open these URLs in separate browser tabs:
    - Scheduled Arrival: 5 hours from now
    - Gate: `A12`
    - Aircraft: `N123AA`
+   - **Demo Mode (120x speed)**: Keep checked for quick demo (3-5 minutes), uncheck for realistic multi-hour timing
 3. Click "Start Flight"
-4. Watch the flight appear in the Active Flights list
+4. Watch the flight appear in the Active Flights list with timing mode badge (yellow "Demo Speed 120x" or blue "Real-time")
 
 **Via REST API:**
 ```bash
@@ -246,9 +429,12 @@ curl -X POST http://localhost:8080/api/flights/start \
     "scheduledDeparture": "2026-01-26T14:00:00",
     "scheduledArrival": "2026-01-26T16:30:00",
     "gate": "A12",
-    "aircraft": "N123AA"
+    "aircraft": "N123AA",
+    "demoMode": true
   }'
 ```
+
+**Note:** Set `"demoMode": true` for quick demos (120x speed), or `false` for realistic multi-hour timing.
 
 **Expected Result:** Flight workflow starts and begins progressing through states: SCHEDULED → BOARDING → DEPARTED → IN_FLIGHT → LANDED → COMPLETED
 
@@ -348,10 +534,7 @@ Demonstrate how external events from Kafka automatically drive workflow signals.
 
 **Publish an Event to Kafka:**
 ```bash
-# Connect to Kafka container
-docker exec -it temporal-jetstream-kafka-1 /bin/bash
-
-# Inside the container, start the console producer
+# Start the Kafka console producer
 kafka-console-producer --broker-list localhost:9092 --topic flight-events
 
 # Paste this event (then press Enter and Ctrl+D):
@@ -438,8 +621,7 @@ curl -X POST http://localhost:8080/api/flights/AA1234/cancel?flightDate=2026-01-
 **Monitor Kafka:**
 ```bash
 # View all messages in flight-events topic
-docker exec -it temporal-jetstream-kafka-1 kafka-console-consumer \
-  --bootstrap-server localhost:9092 \
+kafka-console-consumer --bootstrap-server localhost:9092 \
   --topic flight-events \
   --from-beginning
 ```
@@ -914,20 +1096,25 @@ Unlike application logs that can be lost or rotated:
 
 For airline operations handling millions of dollars in assets and customer commitments, having a complete audit trail of every flight decision is invaluable for both operational excellence and regulatory compliance.
 
-## Kafka Integration for Event Ingestion
+## Kafka Integration - Producer and Consumer
 
-The application demonstrates how Temporal complements existing streaming architectures by integrating with Apache Kafka. Flight events published to Kafka topics are automatically consumed and translated into workflow signals, enabling event-driven workflow orchestration.
+The application demonstrates how Temporal complements existing streaming architectures by integrating with Apache Kafka in both directions: consuming external events to drive workflows AND publishing state changes for downstream systems.
 
 ### Architecture Overview
 
 ```
-External Systems → Kafka (flight-events topic) → FlightEventConsumer → Temporal Workflow Signals → Flight State Updates
+External Systems → Kafka (flight-events) → FlightEventConsumer → Workflow Signals → State Changes
+                                                                                         ↓
+                                                                    FlightEventActivity (via Activity)
+                                                                                         ↓
+                                                                    Kafka (flight-state-changes) → Downstream Systems
 ```
 
-This integration shows how:
-- **Kafka** handles high-throughput event streaming from external systems (radar, gate systems, crew apps)
-- **Temporal** provides durable orchestration of multi-step flight processes
-- **Together** they create a robust event-driven architecture where events drive workflow state machines
+This bidirectional integration shows how:
+- **Kafka Consumer**: External events (delays, gate changes) drive workflow state transitions via signals
+- **Kafka Producer**: Every workflow state transition publishes events for downstream analytics and monitoring
+- **Temporal**: Provides durable orchestration with complete audit trail
+- **Together**: They create a robust event-driven architecture with visibility into all state changes
 
 ### Supported Event Types
 
@@ -992,10 +1179,7 @@ Events published to the `flight-events` topic should follow this JSON schema:
 You can use the Kafka console producer to manually publish test events:
 
 ```bash
-# Connect to Kafka container
-docker exec -it temporal-jetstream-kafka-1 /bin/bash
-
-# Produce a test event
+# Start the console producer
 kafka-console-producer --broker-list localhost:9092 --topic flight-events
 
 # Then paste an event (Ctrl+D to exit):
@@ -1007,11 +1191,31 @@ kafka-console-producer --broker-list localhost:9092 --topic flight-events
 To see messages being consumed from the flight-events topic:
 
 ```bash
-# View messages in the flight-events topic
-docker exec -it temporal-jetstream-kafka-1 kafka-console-consumer \
-  --bootstrap-server localhost:9092 \
+# View incoming events (external systems → workflows)
+kafka-console-consumer --bootstrap-server localhost:9092 \
   --topic flight-events \
   --from-beginning
+```
+
+To see state changes published by workflows:
+
+```bash
+# View outgoing state changes (workflows → downstream systems)
+kafka-console-consumer --bootstrap-server localhost:9092 \
+  --topic flight-state-changes \
+  --from-beginning
+```
+
+**State change event format:**
+```json
+{
+  "flightNumber": "AA1234",
+  "previousState": "SCHEDULED",
+  "newState": "BOARDING",
+  "timestamp": "2026-01-27T10:30:00",
+  "gate": "B12",
+  "delay": 0
+}
 ```
 
 #### Running Integration Tests
@@ -1028,7 +1232,7 @@ The project includes comprehensive Kafka integration tests:
 
 These tests use **EmbeddedKafka** for fast, isolated testing without external dependencies.
 
-### How It Works
+### How the Consumer Works (Event Ingestion)
 
 1. **FlightEventConsumer** listens to the `flight-events` Kafka topic using `@KafkaListener`
 2. When an event arrives, it's deserialized from JSON into a `FlightEvent` object
@@ -1037,6 +1241,22 @@ These tests use **EmbeddedKafka** for fast, isolated testing without external de
 5. The appropriate signal method is called on the workflow (`announceDelay`, `changeGate`, `cancelFlight`)
 6. The workflow processes the signal and updates its state accordingly
 7. State changes are broadcast to the WebSocket clients for real-time UI updates
+
+### How the Producer Works (State Change Publishing)
+
+1. **FlightWorkflowImpl** uses `FlightEventActivity` (Temporal Activity) to publish state changes
+2. After each state transition (SCHEDULED → BOARDING → DEPARTED, etc.), the workflow calls the activity
+3. **FlightEventActivityImpl** invokes **FlightEventProducer** service
+4. **FlightEventProducer** serializes state change to JSON and publishes to `flight-state-changes` Kafka topic
+5. Published events include: flightNumber, previousState, newState, timestamp, gate, delay
+6. Activities ensure Kafka publishing happens outside the workflow (non-deterministic operations)
+7. REST API signals (via FlightController) also publish to Kafka when they update flight state
+
+**Why Activities?**
+- Workflows must be deterministic (no external calls like Kafka directly from workflow code)
+- Activities handle side effects like publishing to external systems
+- Activities have retry policies configured for resilience
+- If Kafka is unavailable, activity retries ensure eventual delivery
 
 ### Application Logs
 
@@ -1099,6 +1319,389 @@ This demo focuses on the Temporal orchestration piece, showing how it complement
 
 For airlines, this means gate systems can publish events to Kafka, and those events automatically drive flight workflows without tight coupling or complex state management.
 
+## Flink Stream Processing Integration
+
+The application demonstrates the architectural pattern where **Flink handles stateful stream processing and enrichment** while **Temporal handles durable orchestration**. This separation of concerns creates a robust, scalable system.
+
+### Architecture Overview
+
+```
+External Systems (Gate, Crew, Weather)
+        ↓
+   [raw-flight-events topic]
+        ↓
+   Flink Enrichment Job ← Stateless map() function
+        ↓                  - Adds estimatedDelay
+        ↓                  - Calculates riskScore
+        ↓                  - Adds enrichedTimestamp
+        ↓
+   [flight-events topic]
+        ↓
+   FlightEventConsumer → Sends signals to workflows
+        ↓
+   Temporal Workflows (Durable orchestration)
+```
+
+### How It Works
+
+1. **External systems publish raw events** to the `raw-flight-events` Kafka topic (e.g., delay announcements, gate changes)
+2. **Flink consumes raw events** and enriches them with calculated fields:
+   - `estimatedDelay`: Parsed from event data or calculated based on event type
+   - `riskScore`: Risk level (LOW, MEDIUM, HIGH) based on delay thresholds
+   - `enrichedTimestamp`: When the enrichment occurred
+3. **Flink publishes enriched events** to the `flight-events` topic
+4. **FlightEventConsumer** (Spring Kafka) reads enriched events and sends signals to Temporal workflows
+5. **Temporal workflows** process signals and update flight state
+
+### Enrichment Logic
+
+The Flink job implements simple enrichment for demo purposes:
+
+```java
+// Risk Score Calculation
+if (estimatedDelay > 60 minutes) -> HIGH risk
+else if (estimatedDelay > 30 minutes) -> MEDIUM risk
+else -> LOW risk
+```
+
+For production systems, Flink enrichment might include:
+- Weather data correlation
+- Historical delay pattern analysis
+- Crew availability checks
+- Airport capacity calculations
+- Passenger connection impact
+
+### Building and Running the Flink Job
+
+#### Build the Flink JAR
+
+```bash
+./mvnw clean package
+```
+
+This creates `target/flink-enrichment-job.jar` with all dependencies bundled (via Maven Shade Plugin).
+
+#### Start Flink Cluster
+
+```bash
+start-flink
+```
+
+Verify Flink Web UI is accessible at `http://localhost:8081`.
+
+#### Submit the Job
+
+```bash
+flink run -c com.temporal.jetstream.flink.FlinkEnrichmentJob target/flink-enrichment-job.jar
+```
+
+#### Verify Job is Running
+
+Check the Flink Web UI at `http://localhost:8081` - you should see "Flight Event Enrichment Job" in the running jobs list.
+
+Or use CLI:
+```bash
+flink list
+```
+
+### Testing the Integration
+
+#### 1. Publish a Raw Event to Kafka
+
+```bash
+# Publish a delay event to raw-flight-events topic
+echo '{
+  "eventType": "DELAY_ANNOUNCED",
+  "flightNumber": "AA1234",
+  "flightDate": "2026-01-27",
+  "data": "{\"delayMinutes\":45}"
+}' | kafka-console-producer --broker-list localhost:9092 --topic raw-flight-events
+```
+
+#### 2. Verify Enriched Event in flight-events Topic
+
+```bash
+# Monitor flight-events topic to see enriched event
+kafka-console-consumer --bootstrap-server localhost:9092 \
+  --topic flight-events \
+  --from-beginning
+```
+
+You should see the enriched event with additional fields:
+```json
+{
+  "eventType": "DELAY_ANNOUNCED",
+  "flightNumber": "AA1234",
+  "flightDate": "2026-01-27",
+  "data": "{\"delayMinutes\":45}",
+  "estimatedDelay": 45,
+  "riskScore": "MEDIUM",
+  "enrichedTimestamp": "2026-01-27T10:30:00"
+}
+```
+
+#### 3. Verify Workflow Received Signal
+
+Check application logs for:
+```
+Received Kafka event: DELAY_ANNOUNCED for flight AA1234
+Sent signal to workflow: flight-AA1234-2026-01-27
+```
+
+Or query the workflow state:
+```bash
+curl http://localhost:8080/api/flights/AA1234/details?flightDate=2026-01-27
+```
+
+Should show `delay: 45` in the response.
+
+### Managing the Flink Job
+
+#### List Running Jobs
+```bash
+flink list
+```
+
+#### Cancel a Job
+```bash
+flink cancel <job-id>
+```
+
+#### Stop Flink Cluster
+```bash
+stop-flink
+```
+
+### Why Flink + Temporal?
+
+**Flink** excels at:
+- High-throughput stream processing (millions of events/second)
+- Stateful computations (aggregations, windowing)
+- Real-time analytics and metrics
+- Event-time processing with watermarks
+
+**Temporal** excels at:
+- Durable, long-running workflows (hours to days)
+- Multi-step process orchestration
+- Guaranteed execution with retries
+- Complete audit trail of decisions
+
+**Together** they provide:
+- **Stream Processing**: Flink enriches and aggregates events in real-time
+- **Orchestration**: Temporal coordinates multi-step flight operations
+- **Durability**: Workflows survive failures and resume automatically
+- **Observability**: Complete history of both events and workflow decisions
+
+### Architecture Notes
+
+- **Stateless Enrichment**: The Flink job uses a simple `map()` function (no state management needed for this demo)
+- **Loose Coupling**: Flink and Temporal communicate asynchronously via Kafka topics
+- **Independent Scaling**: Flink and Temporal workers can scale independently based on load
+- **Failure Isolation**: Flink restart doesn't affect running Temporal workflows
+
+For airlines:
+- **Flink processes real-time metrics**: On-time performance, capacity utilization, delay patterns
+- **Temporal orchestrates operations**: Flight lifecycle, crew scheduling, passenger rebooking
+- **Kafka connects them**: Event-driven, loosely coupled, highly scalable architecture
+
+### Flink Web UI
+
+Access the Flink dashboard at `http://localhost:8081` to monitor:
+- Running jobs and their status
+- Task parallelism and distribution
+- Backpressure and throughput metrics
+- Checkpoint and savepoint information
+- Job execution timeline
+
+## MongoDB Persistence for Flight State History
+
+The application uses MongoDB to persist every flight state transition for historical analysis and debugging. This provides business state history that complements Temporal's workflow execution history.
+
+### Architecture
+
+```
+Workflow State Transition
+    ↓
+PersistenceActivity (Temporal Activity)
+    ↓
+FlightStateTransitionRepository
+    ↓
+MongoDB (flight_state_transitions collection)
+```
+
+### FlightStateTransition Schema
+
+Each state transition document in MongoDB contains:
+
+```json
+{
+  "_id": "65b8f3e7a2c4d1e8f9b0c1d2",
+  "flightNumber": "AA1234",
+  "flightDate": "2026-01-27",
+  "fromState": "SCHEDULED",
+  "toState": "BOARDING",
+  "timestamp": "2026-01-27T10:30:45",
+  "gate": "B12",
+  "delay": 15,
+  "aircraft": "N12345",
+  "eventType": "STATE_TRANSITION",
+  "eventDetails": "Flight transitioned from SCHEDULED to BOARDING"
+}
+```
+
+### Key Features
+
+**Indexed Fields for Performance**
+- `flightNumber` - Quickly find transitions for specific flight
+- `flightDate` - Filter by date
+- `timestamp` - Sort transitions chronologically
+
+**Complete State History**
+- Every workflow state transition is captured
+- Includes contextual data: gate, delay, aircraft
+- Sorted by timestamp descending (most recent first)
+
+**Separate from Temporal History**
+- Temporal provides workflow execution history (events, tasks, activities)
+- MongoDB provides business state history optimized for analytics
+- Both audit trails complement each other for different use cases
+
+### REST API Endpoint
+
+```bash
+# Get all state transitions for a specific flight
+GET /api/flights/{flightNumber}/transition-history
+
+# Get transitions for specific flight on specific date
+GET /api/flights/{flightNumber}/transition-history?flightDate=2026-01-27
+```
+
+**Example Response:**
+```json
+[
+  {
+    "id": "65b8f3e7a2c4d1e8f9b0c1d2",
+    "flightNumber": "AA1234",
+    "flightDate": "2026-01-27",
+    "fromState": "LANDED",
+    "toState": "COMPLETED",
+    "timestamp": "2026-01-27T14:30:00",
+    "gate": "B12",
+    "delay": 15,
+    "aircraft": "N12345",
+    "eventType": "STATE_TRANSITION",
+    "eventDetails": "Flight transitioned from LANDED to COMPLETED"
+  },
+  {
+    "id": "65b8f3e7a2c4d1e8f9b0c1d1",
+    "flightNumber": "AA1234",
+    "flightDate": "2026-01-27",
+    "fromState": "IN_FLIGHT",
+    "toState": "LANDED",
+    "timestamp": "2026-01-27T14:00:00",
+    "gate": "B12",
+    "delay": 15,
+    "aircraft": "N12345",
+    "eventType": "STATE_TRANSITION",
+    "eventDetails": "Flight transitioned from IN_FLIGHT to LANDED"
+  }
+]
+```
+
+### Web UI Integration
+
+The UI displays MongoDB transition history alongside Temporal workflow history:
+
+1. Click on any flight in the Active Flights or Recent Flights panel
+2. Click "View Audit Trail" button in the Flight Details section
+3. Use the tabs to switch between:
+   - **Temporal Workflow History** - Complete workflow execution events
+   - **MongoDB State Transitions** - Business state changes with context
+
+This side-by-side comparison demonstrates:
+- Temporal's detailed execution history (every workflow event)
+- MongoDB's focused business state history (state transitions only)
+
+### MongoDB Setup
+
+**Prerequisites:**
+```bash
+# Start MongoDB via Homebrew
+brew services start mongodb-community
+
+# Verify MongoDB is running
+brew services list | grep mongodb
+```
+
+**Database Configuration:**
+- Database name: `temporal-jetstream`
+- Collection: `flight_state_transitions`
+- Connection string: `mongodb://localhost:27017/temporal-jetstream`
+- Data directory: `/opt/homebrew/var/mongodb`
+
+**Configuration in application.yml:**
+```yaml
+spring:
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/temporal-jetstream
+      database: temporal-jetstream
+```
+
+### Testing MongoDB Persistence
+
+```bash
+# Run MongoDB integration tests
+./mvnw test -Dtest=MongoDBPersistenceTest
+
+# Tests verify:
+# - State transitions are correctly saved during workflow execution
+# - Query methods return transitions in correct order
+# - Multiple flights maintain separate transition histories
+```
+
+### Use Cases
+
+**Historical Analysis**
+- Analyze flight patterns across dates
+- Calculate average delays by route or time of day
+- Identify bottlenecks in flight operations
+
+**Debugging**
+- Reconstruct exact sequence of state changes
+- Correlate state transitions with external events
+- Compare actual vs. scheduled timing
+
+**Compliance & Auditing**
+- Immutable record of all state changes
+- Timestamp-based audit trail
+- Queryable by flight, date, or state
+
+**Business Intelligence**
+- Export data to analytics platforms
+- Build dashboards showing flight metrics
+- Track operational KPIs
+
+### Why Both Temporal History AND MongoDB?
+
+**Temporal Workflow History:**
+- Complete execution audit (every event, activity, signal)
+- Optimized for workflow replay and debugging
+- Tied to workflow lifecycle
+- Best for understanding "how the workflow executed"
+
+**MongoDB State Transitions:**
+- Focused on business state changes only
+- Optimized for time-series queries and analytics
+- Persistent beyond workflow completion
+- Best for understanding "what happened to the flight"
+
+**Example:**
+- Temporal history shows: "Signal received at 10:30:45, Activity started, Activity completed"
+- MongoDB history shows: "Flight AA1234 transitioned from SCHEDULED to BOARDING at 10:30:45, gate B12, 15 min delay"
+
+Both provide value - Temporal for workflow debugging, MongoDB for business analytics.
+
 ## Verifying the Setup
 
 Once all services are running, you should see:
@@ -1118,8 +1721,9 @@ Started Application in X seconds
 - **Java 21** - Modern Java LTS version
 - **Spring Boot 4.0.1** - Latest stable Spring Boot framework
 - **Temporal Java SDK 1.32.1** - Workflow orchestration
-- **Apache Kafka 7.8.0** - Event streaming
-- **MongoDB 8.0** - Document persistence
+- **Apache Kafka** (via Homebrew) - Event streaming
+- **MongoDB** (via Homebrew) - Document persistence
+- **Apache Flink** (via Homebrew) - Stream processing
 - **WebSockets** - Real-time UI updates
 
 ## Project Structure
@@ -1129,13 +1733,22 @@ temporal-jetstream/
 ├── src/
 │   ├── main/
 │   │   ├── java/com/temporal/jetstream/
-│   │   │   └── Application.java
+│   │   │   ├── Application.java
+│   │   │   ├── config/          # Spring and Temporal configuration
+│   │   │   ├── workflow/        # Temporal workflow definitions
+│   │   │   ├── activity/        # Temporal activities
+│   │   │   ├── controller/      # REST API controllers
+│   │   │   ├── service/         # Business services
+│   │   │   ├── model/           # Domain models
+│   │   │   ├── dto/             # Data transfer objects
+│   │   │   ├── repository/      # MongoDB repositories
+│   │   │   └── flink/           # Flink jobs
 │   │   └── resources/
-│   │       └── application.yml
+│   │       ├── application.yml  # Application configuration
+│   │       └── static/          # Web UI (HTML, CSS, JS)
 │   └── test/
 │       └── java/com/temporal/jetstream/
 ├── pom.xml
-├── docker-compose.yml
 └── README.md
 ```
 
@@ -1144,8 +1757,12 @@ temporal-jetstream/
 Stop the application with `Ctrl+C`, then stop supporting services:
 
 ```bash
-# Stop Docker services
-docker-compose down
+# Stop Homebrew services
+brew services stop kafka
+brew services stop mongodb-community
+
+# Stop Flink cluster
+stop-flink
 
 # Stop Temporal server
 # Press Ctrl+C in the Temporal server terminal
@@ -1167,14 +1784,38 @@ This is the initial project setup. Future stories will add:
 
 - Verify Java version: `java -version` (should be 21)
 - Check Temporal is running: `temporal server start-dev`
-- Ensure ports are available: 8080 (app), 7233 (Temporal), 9092 (Kafka), 27017 (MongoDB)
+- Ensure ports are available: 8080 (app), 7233 (Temporal), 9092 (Kafka), 27017 (MongoDB), 8081 (Flink)
+- Verify all services are running: `brew services list`
 
-### Docker services won't start
+### Services won't start
 
 ```bash
-# Remove old containers and volumes
-docker-compose down -v
-docker-compose up -d
+# Restart Kafka and MongoDB
+brew services restart kafka
+brew services restart mongodb-community
+
+# Check service status
+brew services list
+
+# Check service logs
+tail -f /opt/homebrew/var/log/kafka/server.log
+tail -f /opt/homebrew/var/log/mongodb/mongo.log
+```
+
+### Flink cluster won't start
+
+```bash
+# Stop existing cluster
+stop-flink
+
+# Check for conflicting processes on port 8081
+lsof -i :8081
+
+# Start fresh
+start-flink
+
+# Verify Flink Web UI is accessible
+curl http://localhost:8081
 ```
 
 ### Tests failing
@@ -1186,9 +1827,26 @@ docker-compose up -d
 
 ### Kafka consumer not receiving messages
 
-- Verify Kafka is running: `docker-compose ps`
+- Verify Kafka is running: `brew services list | grep kafka`
 - Check application logs for "Received Kafka message"
 - Ensure flight workflow is started before publishing events (workflow must exist to receive signals)
+- Verify topics exist: `kafka-topics --list --bootstrap-server localhost:9092`
+
+### MongoDB connection errors
+
+- Verify MongoDB is running: `brew services list | grep mongodb`
+- Check MongoDB logs: `tail -f /opt/homebrew/var/log/mongodb/mongo.log`
+- Verify connection: `mongosh mongodb://localhost:27017/temporal-jetstream`
+- Check data directory permissions: `ls -la /opt/homebrew/var/mongodb`
+
+### Default Ports
+
+- **Application**: 8080
+- **Temporal Server**: 7233
+- **Temporal Web UI**: 8233
+- **Kafka**: 9092
+- **MongoDB**: 27017
+- **Flink Web UI**: 8081
 
 ## Contributing
 
@@ -1216,7 +1874,7 @@ Contributions are welcome! This is a demonstration project showing Temporal best
 - Performance optimization for high-throughput scenarios
 - Additional test coverage
 - Documentation enhancements
-- Example deployments (Kubernetes, Docker Swarm)
+- Example deployments (Kubernetes, cloud platforms)
 
 **Bug Fixes:**
 - Report issues via GitHub Issues

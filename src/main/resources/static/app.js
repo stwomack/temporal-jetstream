@@ -7,8 +7,10 @@ let activeFlights = new Map();
 document.addEventListener('DOMContentLoaded', function() {
     connectWebSocket();
     setupFormHandlers();
-    // Refresh flights periodically (fallback if WebSocket misses updates)
-    setInterval(refreshFlights, 30000); // Every 30 seconds
+    // Load active flights on initial page load
+    refreshActiveFlights();
+    // Refresh active flights periodically (every 5 seconds)
+    setInterval(refreshActiveFlights, 5000);
 });
 
 // WebSocket Connection
@@ -80,6 +82,7 @@ async function startFlight() {
     const arrivalStation = document.getElementById('arrivalStation').value;
     const gate = document.getElementById('gate').value;
     const aircraft = document.getElementById('aircraft').value;
+    const demoMode = document.getElementById('demoMode').checked;
 
     const now = new Date();
     const departure = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 hours from now
@@ -93,7 +96,8 @@ async function startFlight() {
         scheduledDeparture: departure.toISOString(),
         scheduledArrival: arrival.toISOString(),
         gate: gate,
-        aircraft: aircraft
+        aircraft: aircraft,
+        demoMode: demoMode
     };
 
     try {
@@ -134,12 +138,59 @@ async function fetchFlightDetails(flightNumber) {
     }
 }
 
-// Refresh all flights (manual refresh)
-async function refreshFlights() {
-    // Note: In a real app, we'd have a list endpoint
-    // For now, we just re-query the flights we know about
-    for (const flightNumber of activeFlights.keys()) {
-        await fetchFlightDetails(flightNumber);
+// Refresh active flights from server
+async function refreshActiveFlights() {
+    try {
+        const response = await fetch('/api/flights/active');
+        if (response.ok) {
+            const flights = await response.json();
+
+            // Clear current active flights
+            activeFlights.clear();
+
+            // Add all active flights from server
+            flights.forEach(flight => {
+                // Convert ActiveFlightDTO to Flight-like object for display
+                const flightObj = {
+                    flightNumber: flight.flightNumber,
+                    currentState: flight.currentState,
+                    gate: flight.gate,
+                    delay: flight.delay,
+                    workflowId: flight.workflowId,
+                    elapsedTime: formatDuration(flight.elapsedTime)
+                };
+                activeFlights.set(flight.flightNumber, flightObj);
+            });
+
+            renderFlights();
+
+            console.log(`Refreshed ${flights.length} active flights`);
+        } else {
+            console.error('Failed to fetch active flights:', response.status);
+        }
+    } catch (error) {
+        console.error('Error refreshing active flights:', error);
+    }
+}
+
+// Format duration for display
+function formatDuration(duration) {
+    if (!duration) return '0s';
+
+    // Duration format from Java: PT#H#M#S or similar
+    const matches = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?/);
+    if (!matches) return duration;
+
+    const hours = parseInt(matches[1] || 0);
+    const minutes = parseInt(matches[2] || 0);
+    const seconds = Math.floor(parseFloat(matches[3] || 0));
+
+    if (hours > 0) {
+        return `${hours}h ${minutes}m`;
+    } else if (minutes > 0) {
+        return `${minutes}m ${seconds}s`;
+    } else {
+        return `${seconds}s`;
     }
 }
 
@@ -172,6 +223,11 @@ function createFlightCard(flight) {
     const stateClass = flight.currentState || 'SCHEDULED';
     const delayText = flight.delay > 0 ? `<span class="delay-indicator">+${flight.delay} min delay</span>` : '';
 
+    // Determine timing mode - check both isDemoMode field and DEMO prefix for backward compatibility
+    const isDemoMode = flight.isDemoMode || (flight.flightNumber && flight.flightNumber.startsWith('DEMO'));
+    const timingMode = isDemoMode ? 'Demo Speed (120x)' : 'Real-time';
+    const timingBadgeClass = isDemoMode ? 'bg-warning' : 'bg-info';
+
     card.innerHTML = `
         <div class="flight-header">
             <div class="flight-number">${flight.flightNumber}</div>
@@ -179,20 +235,24 @@ function createFlightCard(flight) {
         </div>
         <div class="flight-info">
             <div class="flight-info-item">
-                <span class="flight-info-label">Route</span>
-                <span class="flight-info-value">${flight.departureStation} → ${flight.arrivalStation}</span>
+                <span class="flight-info-label">State</span>
+                <span class="flight-info-value">${stateClass}</span>
             </div>
             <div class="flight-info-item">
                 <span class="flight-info-label">Gate</span>
                 <span class="flight-info-value">${flight.gate || 'N/A'}</span>
             </div>
             <div class="flight-info-item">
-                <span class="flight-info-label">Aircraft</span>
-                <span class="flight-info-value">${flight.aircraft || 'N/A'}</span>
+                <span class="flight-info-label">Delay</span>
+                <span class="flight-info-value">${flight.delay > 0 ? flight.delay + ' min' : '0 min'}</span>
             </div>
             <div class="flight-info-item">
-                <span class="flight-info-label">Delay</span>
-                <span class="flight-info-value">${delayText || '0 min'}</span>
+                <span class="flight-info-label">Running</span>
+                <span class="flight-info-value">${flight.elapsedTime || 'N/A'}</span>
+            </div>
+            <div class="flight-info-item">
+                <span class="flight-info-label">Timing</span>
+                <span class="flight-info-value"><span class="badge ${timingBadgeClass}">${timingMode}</span></span>
             </div>
         </div>
     `;
@@ -200,10 +260,25 @@ function createFlightCard(flight) {
     return card;
 }
 
-function selectFlight(flight) {
+async function selectFlight(flight) {
     selectedFlight = flight;
     renderFlights(); // Re-render to show selection
-    displayFlightDetails(flight);
+
+    // Fetch full flight details from the server
+    try {
+        const response = await fetch(`/api/flights/${flight.flightNumber}/details`);
+        if (response.ok) {
+            const fullFlight = await response.json();
+            selectedFlight = fullFlight;
+            displayFlightDetails(fullFlight);
+        } else {
+            // Fall back to basic flight data
+            displayFlightDetails(flight);
+        }
+    } catch (error) {
+        console.error('Error fetching full flight details:', error);
+        displayFlightDetails(flight);
+    }
 }
 
 function displayFlightDetails(flight) {
@@ -222,6 +297,12 @@ function displayFlightDetails(flight) {
     document.getElementById('detailDelay').textContent = flight.delay || '0';
     document.getElementById('detailDeparture').textContent = formatDateTime(flight.scheduledDeparture);
     document.getElementById('detailArrival').textContent = formatDateTime(flight.scheduledArrival);
+
+    // Display timing mode
+    const isDemoMode = flight.demoMode || (flight.flightNumber && flight.flightNumber.startsWith('DEMO'));
+    const timingModeSpan = document.getElementById('detailTimingMode');
+    timingModeSpan.textContent = isDemoMode ? 'Demo Speed (120x)' : 'Real-time';
+    timingModeSpan.className = `badge ${isDemoMode ? 'bg-warning' : 'bg-info'}`;
 }
 
 // Signal operations
@@ -382,6 +463,7 @@ function addEventLog(flightNumber, state, message) {
 
 // History / Audit Trail
 let currentHistory = null;
+let currentMongoDBTransitions = null;
 
 async function showHistoryModal() {
     if (!selectedFlight) return;
@@ -389,7 +471,7 @@ async function showHistoryModal() {
     const modal = new bootstrap.Modal(document.getElementById('historyModal'));
     document.getElementById('historyFlightNumber').textContent = selectedFlight.flightNumber;
 
-    // Show loading state
+    // Show loading state for both tabs
     document.getElementById('historyTimeline').innerHTML = `
         <div class="text-center">
             <div class="spinner-border text-primary" role="status">
@@ -399,9 +481,18 @@ async function showHistoryModal() {
         </div>
     `;
 
+    document.getElementById('mongodbTransitions').innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading state transitions...</p>
+        </div>
+    `;
+
     modal.show();
 
-    // Fetch history
+    // Fetch Temporal workflow history
     try {
         const response = await fetch(`/api/flights/${selectedFlight.flightNumber}/history`);
         if (response.ok) {
@@ -420,6 +511,29 @@ async function showHistoryModal() {
         document.getElementById('historyTimeline').innerHTML = `
             <div class="alert alert-danger">
                 <strong>Error:</strong> Failed to load workflow history
+            </div>
+        `;
+    }
+
+    // Fetch MongoDB state transitions
+    try {
+        const response = await fetch(`/api/flights/${selectedFlight.flightNumber}/transition-history`);
+        if (response.ok) {
+            currentMongoDBTransitions = await response.json();
+            renderMongoDBTransitions(currentMongoDBTransitions);
+        } else {
+            const error = await response.json();
+            document.getElementById('mongodbTransitions').innerHTML = `
+                <div class="alert alert-danger">
+                    <strong>Error:</strong> ${error.message || 'Failed to load transitions'}
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error fetching MongoDB transitions:', error);
+        document.getElementById('mongodbTransitions').innerHTML = `
+            <div class="alert alert-danger">
+                <strong>Error:</strong> Failed to load state transitions
             </div>
         `;
     }
@@ -447,6 +561,41 @@ function renderHistoryTimeline(history) {
             </div>
             <div class="timeline-event-description">${event.description}</div>
             <div class="timeline-event-type">${event.eventType}</div>
+        `;
+
+        timelineDiv.appendChild(eventDiv);
+    }
+}
+
+function renderMongoDBTransitions(transitions) {
+    const container = document.getElementById('mongodbTransitions');
+
+    if (!transitions || transitions.length === 0) {
+        container.innerHTML = '<p class="text-muted text-center">No state transitions found</p>';
+        return;
+    }
+
+    container.innerHTML = '<div class="timeline"></div>';
+    const timelineDiv = container.querySelector('.timeline');
+
+    for (const transition of transitions) {
+        const eventDiv = document.createElement('div');
+        eventDiv.className = 'timeline-event lifecycle';
+
+        const fromState = transition.fromState || 'START';
+        const toState = transition.toState;
+        const gate = transition.gate || 'N/A';
+        const delay = transition.delay > 0 ? `${transition.delay} min` : 'On time';
+
+        eventDiv.innerHTML = `
+            <div class="timeline-event-header">
+                <span class="timeline-event-id">${fromState} → ${toState}</span>
+                <span class="timeline-event-timestamp">${transition.timestamp}</span>
+            </div>
+            <div class="timeline-event-description">
+                <strong>Gate:</strong> ${gate} | <strong>Delay:</strong> ${delay} | <strong>Aircraft:</strong> ${transition.aircraft || 'N/A'}
+            </div>
+            <div class="timeline-event-type">${transition.eventDetails || transition.eventType}</div>
         `;
 
         timelineDiv.appendChild(eventDiv);
