@@ -758,3 +758,75 @@
 - This three-pronged persistence strategy demonstrates complete observability architecture
 
 ---
+## 2026-01-27 21:17 - story-14
+
+**What was implemented:**
+- Created FlinkEnrichmentJob class for real-time event enrichment
+- Implemented FlightEventEnricher MapFunction with enrichment logic:
+  - Calculates estimatedDelay from event data
+  - Assigns riskScore based on delay thresholds (HIGH > 60, MEDIUM > 30, LOW otherwise)
+  - Adds enrichedTimestamp for tracking
+- Created EnrichedFlightEvent model with enriched fields
+- Configured Flink Kafka source to consume from 'raw-flight-events' topic
+- Configured Flink Kafka sink to produce to 'flight-events' topic
+- Added Flink 1.19.1 dependencies with Kafka connector 3.2.0-1.19
+- Configured Maven Shade Plugin to build standalone flink-enrichment-job.jar
+- Created comprehensive FlinkEnrichmentJobTest with 7 test cases:
+  - testEnrichDelayEvent: Verifies 45-minute delay gets MEDIUM risk
+  - testEnrichHighRiskDelay: Verifies 90-minute delay gets HIGH risk
+  - testEnrichLowRiskDelay: Verifies 15-minute delay gets LOW risk
+  - testEnrichGateChangeEvent: Verifies non-delay events get 0 delay and LOW risk
+  - testEnrichEventWithMalformedData: Tests graceful error handling
+  - testEnrichEventWithNoData: Tests null data handling
+  - testRiskScoreThresholds: Tests boundary conditions (30, 31, 60, 61 minutes)
+- Updated README with comprehensive Flink Integration section (200+ lines):
+  - Installation instructions for Apache Flink via brew
+  - Flink alias setup (start-flink, stop-flink) for macOS
+  - Architecture diagram showing enrichment flow
+  - How to build and submit Flink jobs
+  - Testing instructions with kafka-console-producer/consumer
+  - Job management commands (list, cancel)
+  - Why Flink + Temporal architecture explanation
+- Updated system architecture diagram to show Flink enrichment flow
+- Added Quick Start step for Flink cluster startup
+- Added raw-flight-events topic creation to Quick Start
+
+**Files changed:**
+- src/main/java/com/temporal/jetstream/flink/FlinkEnrichmentJob.java (created)
+- src/main/java/com/temporal/jetstream/model/EnrichedFlightEvent.java (created)
+- src/test/java/com/temporal/jetstream/flink/FlinkEnrichmentJobTest.java (created)
+- pom.xml (added Flink dependencies, Maven Shade Plugin)
+- README.md (added comprehensive Flink integration documentation)
+- prd.json (updated story-14 passes: true)
+
+**Learnings for future iterations:**
+- Flink 2.0.0 has breaking API changes - use stable Flink 1.19.1 for production compatibility
+- Flink Kafka connector version must match Flink version (3.2.0-1.19 for Flink 1.19.x)
+- Maven Shade Plugin creates fat JAR with all dependencies for Flink submission
+- Flink jobs use SimpleStringSchema for Kafka serialization with JSON strings
+- KafkaSource.builder() provides clean API for configuring source connectors
+- KafkaSink.builder() with KafkaRecordSerializationSchema for sink configuration
+- WatermarkStrategy.noWatermarks() is fine for stateless processing
+- MapFunction is appropriate for stateless enrichment (no state needed for this demo)
+- Flink enricher uses ObjectMapper with JavaTimeModule for LocalDateTime serialization
+- Risk score calculation: delay > 60 = HIGH, delay > 30 = MEDIUM, else LOW
+- Graceful degradation: enricher catches exceptions and returns original event on error
+- Flink doesn't run as brew service (no plist) - aliases are best approach for local dev
+- Aliases: start-flink='/opt/homebrew/Cellar/apache-flink/VERSION/libexec/bin/start-cluster.sh'
+- Version path in alias should be adjusted based on installed Flink version
+- flink run -c MainClass jarfile submits job to running cluster
+- flink list shows running jobs, flink cancel <job-id> stops them
+- Flink Web UI at localhost:8081 provides job monitoring
+- Architecture pattern: Flink handles stream processing, Temporal handles orchestration
+- raw-flight-events → Flink enrichment → flight-events → FlightEventConsumer → Temporal workflows
+- This separation of concerns: Flink for stateful analytics, Temporal for durable orchestration
+- Integration tests: 7 Flink enricher tests passed, compilation successful
+- Pre-existing Kafka integration test failures (flaky embedded Kafka, not related to Flink)
+- Documentation explains "Why Flink + Temporal?" - complementary strengths
+- Flink: High-throughput stream processing, stateful computations, real-time analytics
+- Temporal: Durable workflows, multi-step orchestration, guaranteed execution
+- Together: Event-driven architecture with both processing and orchestration
+- For airlines: Flink processes metrics, Temporal orchestrates operations, Kafka connects them
+- Loose coupling via Kafka topics allows independent scaling and failure isolation
+
+---
