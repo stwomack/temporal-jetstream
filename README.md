@@ -1171,6 +1171,191 @@ This demo focuses on the Temporal orchestration piece, showing how it complement
 
 For airlines, this means gate systems can publish events to Kafka, and those events automatically drive flight workflows without tight coupling or complex state management.
 
+## MongoDB Persistence for Flight State History
+
+The application uses MongoDB to persist every flight state transition for historical analysis and debugging. This provides business state history that complements Temporal's workflow execution history.
+
+### Architecture
+
+```
+Workflow State Transition
+    ↓
+PersistenceActivity (Temporal Activity)
+    ↓
+FlightStateTransitionRepository
+    ↓
+MongoDB (flight_state_transitions collection)
+```
+
+### FlightStateTransition Schema
+
+Each state transition document in MongoDB contains:
+
+```json
+{
+  "_id": "65b8f3e7a2c4d1e8f9b0c1d2",
+  "flightNumber": "AA1234",
+  "flightDate": "2026-01-27",
+  "fromState": "SCHEDULED",
+  "toState": "BOARDING",
+  "timestamp": "2026-01-27T10:30:45",
+  "gate": "B12",
+  "delay": 15,
+  "aircraft": "N12345",
+  "eventType": "STATE_TRANSITION",
+  "eventDetails": "Flight transitioned from SCHEDULED to BOARDING"
+}
+```
+
+### Key Features
+
+**Indexed Fields for Performance**
+- `flightNumber` - Quickly find transitions for specific flight
+- `flightDate` - Filter by date
+- `timestamp` - Sort transitions chronologically
+
+**Complete State History**
+- Every workflow state transition is captured
+- Includes contextual data: gate, delay, aircraft
+- Sorted by timestamp descending (most recent first)
+
+**Separate from Temporal History**
+- Temporal provides workflow execution history (events, tasks, activities)
+- MongoDB provides business state history optimized for analytics
+- Both audit trails complement each other for different use cases
+
+### REST API Endpoint
+
+```bash
+# Get all state transitions for a specific flight
+GET /api/flights/{flightNumber}/transition-history
+
+# Get transitions for specific flight on specific date
+GET /api/flights/{flightNumber}/transition-history?flightDate=2026-01-27
+```
+
+**Example Response:**
+```json
+[
+  {
+    "id": "65b8f3e7a2c4d1e8f9b0c1d2",
+    "flightNumber": "AA1234",
+    "flightDate": "2026-01-27",
+    "fromState": "LANDED",
+    "toState": "COMPLETED",
+    "timestamp": "2026-01-27T14:30:00",
+    "gate": "B12",
+    "delay": 15,
+    "aircraft": "N12345",
+    "eventType": "STATE_TRANSITION",
+    "eventDetails": "Flight transitioned from LANDED to COMPLETED"
+  },
+  {
+    "id": "65b8f3e7a2c4d1e8f9b0c1d1",
+    "flightNumber": "AA1234",
+    "flightDate": "2026-01-27",
+    "fromState": "IN_FLIGHT",
+    "toState": "LANDED",
+    "timestamp": "2026-01-27T14:00:00",
+    "gate": "B12",
+    "delay": 15,
+    "aircraft": "N12345",
+    "eventType": "STATE_TRANSITION",
+    "eventDetails": "Flight transitioned from IN_FLIGHT to LANDED"
+  }
+]
+```
+
+### Web UI Integration
+
+The UI displays MongoDB transition history alongside Temporal workflow history:
+
+1. Click on any flight in the Active Flights or Recent Flights panel
+2. Click "View Audit Trail" button in the Flight Details section
+3. Use the tabs to switch between:
+   - **Temporal Workflow History** - Complete workflow execution events
+   - **MongoDB State Transitions** - Business state changes with context
+
+This side-by-side comparison demonstrates:
+- Temporal's detailed execution history (every workflow event)
+- MongoDB's focused business state history (state transitions only)
+
+### MongoDB Setup
+
+**Prerequisites:**
+```bash
+# Start MongoDB via Docker (already included in docker-compose.yml)
+docker-compose up -d mongodb
+```
+
+**Database Configuration:**
+- Database name: `temporal-jetstream`
+- Collection: `flight_state_transitions`
+- Connection string: `mongodb://localhost:27017/temporal-jetstream`
+
+**Configuration in application.yml:**
+```yaml
+spring:
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/temporal-jetstream
+      database: temporal-jetstream
+```
+
+### Testing MongoDB Persistence
+
+```bash
+# Run MongoDB integration tests
+./mvnw test -Dtest=MongoDBPersistenceTest
+
+# Tests verify:
+# - State transitions are correctly saved during workflow execution
+# - Query methods return transitions in correct order
+# - Multiple flights maintain separate transition histories
+```
+
+### Use Cases
+
+**Historical Analysis**
+- Analyze flight patterns across dates
+- Calculate average delays by route or time of day
+- Identify bottlenecks in flight operations
+
+**Debugging**
+- Reconstruct exact sequence of state changes
+- Correlate state transitions with external events
+- Compare actual vs. scheduled timing
+
+**Compliance & Auditing**
+- Immutable record of all state changes
+- Timestamp-based audit trail
+- Queryable by flight, date, or state
+
+**Business Intelligence**
+- Export data to analytics platforms
+- Build dashboards showing flight metrics
+- Track operational KPIs
+
+### Why Both Temporal History AND MongoDB?
+
+**Temporal Workflow History:**
+- Complete execution audit (every event, activity, signal)
+- Optimized for workflow replay and debugging
+- Tied to workflow lifecycle
+- Best for understanding "how the workflow executed"
+
+**MongoDB State Transitions:**
+- Focused on business state changes only
+- Optimized for time-series queries and analytics
+- Persistent beyond workflow completion
+- Best for understanding "what happened to the flight"
+
+**Example:**
+- Temporal history shows: "Signal received at 10:30:45, Activity started, Activity completed"
+- MongoDB history shows: "Flight AA1234 transitioned from SCHEDULED to BOARDING at 10:30:45, gate B12, 15 min delay"
+
+Both provide value - Temporal for workflow debugging, MongoDB for business analytics.
+
 ## Verifying the Setup
 
 Once all services are running, you should see:

@@ -1,6 +1,7 @@
 package com.temporal.jetstream.config;
 
 import com.temporal.jetstream.activity.FlightEventActivityImpl;
+import com.temporal.jetstream.activity.PersistenceActivityImpl;
 import com.temporal.jetstream.workflow.FlightWorkflow;
 import com.temporal.jetstream.workflow.FlightWorkflowImpl;
 import com.temporal.jetstream.workflow.MultiLegFlightWorkflowImpl;
@@ -28,6 +29,9 @@ public class TemporalConfig {
     @Autowired
     private FlightEventActivityImpl flightEventActivity;
 
+    @Autowired
+    private PersistenceActivityImpl persistenceActivity;
+
     private WorkerFactory workerFactory;
 
     @Bean
@@ -53,8 +57,8 @@ public class TemporalConfig {
         logger.info("Registered FlightWorkflowImpl and MultiLegFlightWorkflowImpl for task queue: {}", taskQueue);
 
         // Register activities
-        worker.registerActivitiesImplementations(flightEventActivity);
-        logger.info("Registered FlightEventActivity for task queue: {}", taskQueue);
+        worker.registerActivitiesImplementations(flightEventActivity, persistenceActivity);
+        logger.info("Registered FlightEventActivity and PersistenceActivity for task queue: {}", taskQueue);
 
         // Start the worker factory immediately after registration
         workerFactory.start();

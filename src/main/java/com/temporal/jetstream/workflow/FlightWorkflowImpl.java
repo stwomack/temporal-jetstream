@@ -1,13 +1,16 @@
 package com.temporal.jetstream.workflow;
 
 import com.temporal.jetstream.activity.FlightEventActivity;
+import com.temporal.jetstream.activity.PersistenceActivity;
 import com.temporal.jetstream.model.Flight;
 import com.temporal.jetstream.model.FlightState;
+import com.temporal.jetstream.model.FlightStateTransition;
 import io.temporal.activity.ActivityOptions;
 import io.temporal.workflow.Workflow;
 import org.slf4j.Logger;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 
 public class FlightWorkflowImpl implements FlightWorkflow {
 
@@ -25,6 +28,14 @@ public class FlightWorkflowImpl implements FlightWorkflow {
     // Activity stub for publishing state changes to Kafka
     private final FlightEventActivity flightEventActivity = Workflow.newActivityStub(
         FlightEventActivity.class,
+        ActivityOptions.newBuilder()
+            .setStartToCloseTimeout(Duration.ofSeconds(10))
+            .build()
+    );
+
+    // Activity stub for persisting state transitions to MongoDB
+    private final PersistenceActivity persistenceActivity = Workflow.newActivityStub(
+        PersistenceActivity.class,
         ActivityOptions.newBuilder()
             .setStartToCloseTimeout(Duration.ofSeconds(10))
             .build()
@@ -157,12 +168,14 @@ public class FlightWorkflowImpl implements FlightWorkflow {
     }
 
     /**
-     * Publishes a state transition event to Kafka via activity.
+     * Publishes a state transition event to Kafka and persists to MongoDB via activities.
      */
     private void publishStateTransition(Flight flight, FlightState previousState, FlightState newState) {
         try {
             String prevState = previousState != null ? previousState.toString() : null;
             String gate = currentGate != null ? currentGate : (flight.getGate() != null ? flight.getGate() : "");
+
+            // Publish to Kafka
             flightEventActivity.publishStateChange(
                 flight.getFlightNumber(),
                 prevState,
@@ -170,9 +183,25 @@ public class FlightWorkflowImpl implements FlightWorkflow {
                 gate,
                 delayMinutes
             );
+
+            // Persist to MongoDB
+            FlightStateTransition transition = new FlightStateTransition(
+                flight.getFlightNumber(),
+                flight.getFlightDate(),
+                previousState,
+                newState,
+                LocalDateTime.now(),
+                gate,
+                delayMinutes,
+                flight.getAircraft(),
+                "STATE_TRANSITION",
+                String.format("Flight transitioned from %s to %s",
+                    previousState != null ? previousState : "null", newState)
+            );
+            persistenceActivity.saveStateTransition(transition);
         } catch (Exception e) {
-            logger.warn("Failed to publish state transition to Kafka: {}", e.getMessage());
-            // Don't fail the workflow if Kafka publishing fails
+            logger.warn("Failed to publish state transition: {}", e.getMessage());
+            // Don't fail the workflow if publishing fails
         }
     }
 

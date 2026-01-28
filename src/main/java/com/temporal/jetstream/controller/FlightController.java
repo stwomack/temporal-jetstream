@@ -3,6 +3,8 @@ package com.temporal.jetstream.controller;
 import com.temporal.jetstream.dto.*;
 import com.temporal.jetstream.model.Flight;
 import com.temporal.jetstream.model.FlightState;
+import com.temporal.jetstream.model.FlightStateTransition;
+import com.temporal.jetstream.repository.FlightStateTransitionRepository;
 import com.temporal.jetstream.service.FlightEventProducer;
 import com.temporal.jetstream.service.FlightEventService;
 import com.temporal.jetstream.service.HistoryService;
@@ -45,6 +47,9 @@ public class FlightController {
 
     @Autowired
     private HistoryService historyService;
+
+    @Autowired
+    private FlightStateTransitionRepository transitionRepository;
 
     @Value("${temporal.task-queue}")
     private String taskQueue;
@@ -401,6 +406,39 @@ public class FlightController {
             logger.error("Error retrieving history for flight {}: {}", flightNumber, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new ErrorResponse("HISTORY_ERROR", e.getMessage()));
+        }
+    }
+
+    @Operation(summary = "Get flight state transition history from MongoDB",
+               description = "Retrieves business state transitions from MongoDB for historical analysis")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Transition history retrieved successfully"),
+            @ApiResponse(responseCode = "500", description = "Failed to retrieve transition history")
+    })
+    @GetMapping("/{flightNumber}/transition-history")
+    public ResponseEntity<?> getTransitionHistory(
+            @PathVariable String flightNumber,
+            @RequestParam(required = false) String flightDate) {
+        try {
+            List<FlightStateTransition> transitions;
+
+            if (flightDate != null) {
+                java.time.LocalDate date = java.time.LocalDate.parse(flightDate);
+                transitions = transitionRepository.findByFlightNumberAndFlightDateOrderByTimestampDesc(flightNumber, date);
+                logger.info("Retrieved {} state transitions from MongoDB for flight {} on {}",
+                           transitions.size(), flightNumber, flightDate);
+            } else {
+                transitions = transitionRepository.findByFlightNumberOrderByTimestampDesc(flightNumber);
+                logger.info("Retrieved {} state transitions from MongoDB for flight {} (all dates)",
+                           transitions.size(), flightNumber);
+            }
+
+            return ResponseEntity.ok(transitions);
+
+        } catch (Exception e) {
+            logger.error("Error retrieving transition history for flight {}: {}", flightNumber, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ErrorResponse("TRANSITION_HISTORY_ERROR", e.getMessage()));
         }
     }
 

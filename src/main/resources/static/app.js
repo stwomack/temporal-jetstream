@@ -382,6 +382,7 @@ function addEventLog(flightNumber, state, message) {
 
 // History / Audit Trail
 let currentHistory = null;
+let currentMongoDBTransitions = null;
 
 async function showHistoryModal() {
     if (!selectedFlight) return;
@@ -389,7 +390,7 @@ async function showHistoryModal() {
     const modal = new bootstrap.Modal(document.getElementById('historyModal'));
     document.getElementById('historyFlightNumber').textContent = selectedFlight.flightNumber;
 
-    // Show loading state
+    // Show loading state for both tabs
     document.getElementById('historyTimeline').innerHTML = `
         <div class="text-center">
             <div class="spinner-border text-primary" role="status">
@@ -399,9 +400,18 @@ async function showHistoryModal() {
         </div>
     `;
 
+    document.getElementById('mongodbTransitions').innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading state transitions...</p>
+        </div>
+    `;
+
     modal.show();
 
-    // Fetch history
+    // Fetch Temporal workflow history
     try {
         const response = await fetch(`/api/flights/${selectedFlight.flightNumber}/history`);
         if (response.ok) {
@@ -420,6 +430,29 @@ async function showHistoryModal() {
         document.getElementById('historyTimeline').innerHTML = `
             <div class="alert alert-danger">
                 <strong>Error:</strong> Failed to load workflow history
+            </div>
+        `;
+    }
+
+    // Fetch MongoDB state transitions
+    try {
+        const response = await fetch(`/api/flights/${selectedFlight.flightNumber}/transition-history`);
+        if (response.ok) {
+            currentMongoDBTransitions = await response.json();
+            renderMongoDBTransitions(currentMongoDBTransitions);
+        } else {
+            const error = await response.json();
+            document.getElementById('mongodbTransitions').innerHTML = `
+                <div class="alert alert-danger">
+                    <strong>Error:</strong> ${error.message || 'Failed to load transitions'}
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error fetching MongoDB transitions:', error);
+        document.getElementById('mongodbTransitions').innerHTML = `
+            <div class="alert alert-danger">
+                <strong>Error:</strong> Failed to load state transitions
             </div>
         `;
     }
@@ -447,6 +480,41 @@ function renderHistoryTimeline(history) {
             </div>
             <div class="timeline-event-description">${event.description}</div>
             <div class="timeline-event-type">${event.eventType}</div>
+        `;
+
+        timelineDiv.appendChild(eventDiv);
+    }
+}
+
+function renderMongoDBTransitions(transitions) {
+    const container = document.getElementById('mongodbTransitions');
+
+    if (!transitions || transitions.length === 0) {
+        container.innerHTML = '<p class="text-muted text-center">No state transitions found</p>';
+        return;
+    }
+
+    container.innerHTML = '<div class="timeline"></div>';
+    const timelineDiv = container.querySelector('.timeline');
+
+    for (const transition of transitions) {
+        const eventDiv = document.createElement('div');
+        eventDiv.className = 'timeline-event lifecycle';
+
+        const fromState = transition.fromState || 'START';
+        const toState = transition.toState;
+        const gate = transition.gate || 'N/A';
+        const delay = transition.delay > 0 ? `${transition.delay} min` : 'On time';
+
+        eventDiv.innerHTML = `
+            <div class="timeline-event-header">
+                <span class="timeline-event-id">${fromState} → ${toState}</span>
+                <span class="timeline-event-timestamp">${transition.timestamp}</span>
+            </div>
+            <div class="timeline-event-description">
+                <strong>Gate:</strong> ${gate} | <strong>Delay:</strong> ${delay} | <strong>Aircraft:</strong> ${transition.aircraft || 'N/A'}
+            </div>
+            <div class="timeline-event-type">${transition.eventDetails || transition.eventType}</div>
         `;
 
         timelineDiv.appendChild(eventDiv);
