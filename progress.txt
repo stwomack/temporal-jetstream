@@ -650,3 +650,54 @@
 - Project is now fully documented and ready for demo/production evaluation
 
 ---
+## 2026-01-27 20:48 - story-12
+
+**What was implemented:**
+- Created FlightEventProducer @Service to publish flight state transitions to 'flight-state-changes' Kafka topic
+- Created FlightEventActivity interface and FlightEventActivityImpl for Kafka publishing from workflows
+- Registered FlightEventActivity with worker in TemporalConfig
+- Updated FlightWorkflowImpl to call FlightEventActivity after every state transition (SCHEDULED->BOARDING, etc.)
+- Updated FlightController endpoints to publish to Kafka when REST signals sent (delay, gate change, cancel)
+- Created KafkaProducerConfig with KafkaTemplate bean (uses StringSerializer, configured with acks and retries)
+- Updated KafkaIntegrationTest to include 'flight-state-changes' topic and added producer test
+- Enhanced README with comprehensive bidirectional Kafka architecture documentation
+- Added Kafka topic creation commands to Quick Start section for both topics
+
+**Files changed:**
+- src/main/java/com/temporal/jetstream/activity/FlightEventActivity.java (created)
+- src/main/java/com/temporal/jetstream/activity/FlightEventActivityImpl.java (created)
+- src/main/java/com/temporal/jetstream/config/KafkaProducerConfig.java (created)
+- src/main/java/com/temporal/jetstream/service/FlightEventProducer.java (created)
+- src/main/java/com/temporal/jetstream/config/TemporalConfig.java (registered FlightEventActivity)
+- src/main/java/com/temporal/jetstream/workflow/FlightWorkflowImpl.java (added publishStateTransition calls)
+- src/main/java/com/temporal/jetstream/controller/FlightController.java (added Kafka publishing to signal endpoints)
+- src/test/java/com/temporal/jetstream/integration/KafkaIntegrationTest.java (added producer test)
+- README.md (updated with producer documentation, bidirectional architecture, topic creation)
+- prd.json (updated story-12 passes: true)
+
+**Learnings for future iterations:**
+- Activities are essential for non-deterministic operations like Kafka publishing - workflows must be deterministic
+- Activities are registered with worker using worker.registerActivitiesImplementations()
+- Activity stubs created in workflow with Workflow.newActivityStub() and ActivityOptions (set timeout)
+- Activities have retry policies automatically applied for resilience (Kafka connection failures, etc.)
+- FlightEventProducer publishes to 'flight-state-changes' topic with JSON format: flightNumber, previousState, newState, timestamp, gate, delay
+- Every workflow state transition publishes an event: workflow starts SCHEDULED, then BOARDING, DEPARTED, IN_FLIGHT, LANDED, COMPLETED
+- FlightController also publishes when REST signals sent, providing dual path for event publishing
+- Bidirectional Kafka integration: External Events (flight-events) -> Workflows; Workflow State Changes -> Downstream Systems (flight-state-changes)
+- KafkaTemplate.send() returns CompletableFuture - use whenComplete() for async logging
+- Producer uses acks=1 (wait for leader) and retries=3 for reliability
+- Integration test uses EmbeddedKafkaBroker to create test consumer and verify events published
+- README architecture diagram shows complete flow: External Systems -> Consumer -> Workflows -> Activity -> Producer -> Downstream Systems
+- Activities ensure workflow code stays deterministic (no direct external calls)
+- If Kafka is unavailable, workflow continues - activity failures are logged but don't fail workflow
+- publishStateTransition() wraps activity call in try-catch to prevent workflow failure on Kafka issues
+- Producer service uses @Autowired ObjectMapper for JSON serialization
+- State change events include all context: flight number, states, timestamp, gate, delay for downstream analytics
+- Two topics pattern: flight-events (inbound commands), flight-state-changes (outbound events)
+- docker-compose Kafka has auto-create-topics enabled, but explicit topic creation ensures proper partitions/replication
+- Topic creation commands use docker exec with kafka-topics CLI tool
+- 'flight-state-changes' topic consumed by downstream systems for analytics, monitoring, notifications
+- This pattern demonstrates event sourcing: every state change is an immutable event in Kafka
+- Complements Temporal's workflow history: Temporal has execution history, Kafka has business event stream
+
+---
