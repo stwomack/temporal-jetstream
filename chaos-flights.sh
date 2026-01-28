@@ -35,7 +35,7 @@ SUCCESS=0
 FAILED=0
 
 # Launch 20 flights
-for i in $(seq 1 20); do
+for i in $(seq 1 2000); do
     # Generate flight data
     FLIGHT_NUM=$(printf "CHS%03d" $i)
     DEP_IDX=$(( (i - 1) % 10 ))

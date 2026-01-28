@@ -307,72 +307,28 @@ flink cancel <job-id>
 ./mvnw spring-boot:run
 ```
 
-The application will start on `http://localhost:8080`.
+The application will start on `http://localhost:8082`.
 
-## Workflow Timing Modes
+## Workflow Timing
 
-The application supports two timing modes to accommodate different use cases:
+All flights use fixed 20-second phase durations for fast, predictable demos:
 
-### Demo Mode (120x Speed) - Recommended for Presentations
+| Phase | Duration |
+|-------|----------|
+| SCHEDULED → BOARDING | 20 seconds |
+| BOARDING → DEPARTED | 20 seconds |
+| DEPARTED → IN_FLIGHT | 20 seconds |
+| IN_FLIGHT → LANDED | 20 seconds |
+| LANDED → COMPLETED | 20 seconds |
 
-Demo Mode accelerates all workflow timing by a factor of 120x, making multi-hour flight lifecycles complete in minutes. This is ideal for:
-- **Live presentations and demos** - Show complete flight lifecycle in 3-5 minutes
-- **Development and testing** - Rapid iteration without waiting hours
-- **Training sessions** - Demonstrate all features quickly
+**Total Flight Duration:** ~100 seconds (under 2 minutes)
 
-**How to enable:**
-- Via Web UI: Check "Demo Mode (120x speed)" checkbox when starting a flight (enabled by default)
-- Via REST API: Set `"demoMode": true` in the flight start request
-- Backward compatibility: Flight numbers starting with "DEMO" automatically use demo mode
+This timing is optimized for:
+- **Live presentations** - Complete flight lifecycle quickly
+- **Development/testing** - Fast feedback cycles
+- **Chaos testing** - Enough time to kill services and watch recovery
 
-**Timing in Demo Mode:**
-- SCHEDULED → BOARDING: 2 hours → 1 minute
-- BOARDING → DEPARTED: 30 minutes → 15 seconds
-- DEPARTED → IN_FLIGHT: 5 minutes → 2.5 seconds
-- IN_FLIGHT → LANDED: Actual flight duration (e.g., 2 hours → 1 minute)
-- LANDED → COMPLETED: 30 minutes → 15 seconds
-
-**Total Demo Flight Duration:** ~3-5 minutes (depending on flight duration)
-
-### Real-time Mode - For Durability Demonstration
-
-Real-time Mode uses realistic airline operation timing, demonstrating Temporal's true durability and long-running workflow capabilities:
-- **Multi-day durability** - Workflows survive hours/days without data loss
-- **Production realism** - Timing matches actual airline operations
-- **Failure recovery testing** - Simulate failures during long workflows
-
-**How to enable:**
-- Via Web UI: Uncheck "Demo Mode (120x speed)" checkbox when starting a flight
-- Via REST API: Set `"demoMode": false` or omit the field
-
-**Timing in Real-time Mode:**
-- SCHEDULED → BOARDING: 2 hours (realistic pre-boarding period)
-- BOARDING → DEPARTED: 30 minutes (realistic boarding time)
-- DEPARTED → IN_FLIGHT: 5 minutes (taxi and takeoff)
-- IN_FLIGHT → LANDED: Actual flight duration (calculated from scheduled times, default 2 hours)
-- LANDED → COMPLETED: 30 minutes (deboarding and gate arrival)
-
-**Total Real-time Flight Duration:** ~5+ hours (demonstrates Temporal's durability)
-
-### Timing Mode Indicators
-
-The UI clearly shows which mode each flight is using:
-- **Active Flights Panel:** Each flight card displays a badge showing "Demo Speed (120x)" (yellow) or "Real-time" (blue)
-- **Flight Details Panel:** Shows timing mode in flight details
-- **Workflow Logs:** All sleep operations log actual duration and mode (e.g., "Sleeping for 1 minute (Demo Speed 120x)")
-
-### When to Use Each Mode
-
-| Use Case | Recommended Mode | Why |
-|----------|------------------|-----|
-| Live presentation | Demo Mode | Complete demo in 5-10 minutes |
-| Development/testing | Demo Mode | Fast feedback cycles |
-| Failure recovery demo | Demo Mode with longer duration | Visible but not too long |
-| Durability showcase | Real-time Mode | Prove workflows survive hours/days |
-| Production evaluation | Real-time Mode | See actual operational timing |
-| Training sessions | Demo Mode | Keep audience engaged |
-
-## Complete Demo Script (5-10 minutes)
+## Complete Demo Script (~5 minutes)
 
 This step-by-step script demonstrates all key features of the system. Follow along to see Temporal's durability, reliability, consistency, and scalability in action.
 
@@ -392,34 +348,30 @@ brew services list
 curl http://localhost:8081
 
 # Check application is running
-curl http://localhost:8080/api/flights/AA1234/state?flightDate=2026-01-26 || echo "App ready for flights"
+curl http://localhost:8082/api/flights/AA1234/state?flightDate=2026-01-26 || echo "App ready for flights"
 ```
 
 Open these URLs in separate browser tabs:
-- **Application UI:** http://localhost:8080
+- **Application UI:** http://localhost:8082
 - **Temporal Web UI:** http://localhost:8233
 - **Flink Web UI:** http://localhost:8081
 
 ### Step 2: Start a Flight Workflow
 
 **Via Web UI:**
-1. Open http://localhost:8080
+1. Open http://localhost:8082
 2. Fill in the "Start New Flight" form:
    - Flight Number: `AA1234`
-   - Flight Date: Today's date
    - Departure Station: `ORD`
    - Arrival Station: `DFW`
-   - Scheduled Departure: 2 hours from now
-   - Scheduled Arrival: 5 hours from now
    - Gate: `A12`
    - Aircraft: `N123AA`
-   - **Demo Mode (120x speed)**: Keep checked for quick demo (3-5 minutes), uncheck for realistic multi-hour timing
 3. Click "Start Flight"
-4. Watch the flight appear in the Active Flights list with timing mode badge (yellow "Demo Speed 120x" or blue "Real-time")
+4. Watch the flight appear in the Active Flights list
 
 **Via REST API:**
 ```bash
-curl -X POST http://localhost:8080/api/flights/start \
+curl -X POST http://localhost:8082/api/flights/start \
   -H "Content-Type: application/json" \
   -d '{
     "flightNumber": "AA1234",
@@ -429,14 +381,11 @@ curl -X POST http://localhost:8080/api/flights/start \
     "scheduledDeparture": "2026-01-26T14:00:00",
     "scheduledArrival": "2026-01-26T16:30:00",
     "gate": "A12",
-    "aircraft": "N123AA",
-    "demoMode": true
+    "aircraft": "N123AA"
   }'
 ```
 
-**Note:** Set `"demoMode": true` for quick demos (120x speed), or `false` for realistic multi-hour timing.
-
-**Expected Result:** Flight workflow starts and begins progressing through states: SCHEDULED → BOARDING → DEPARTED → IN_FLIGHT → LANDED → COMPLETED
+**Expected Result:** Flight workflow starts and progresses through states every 20 seconds: SCHEDULED → BOARDING → DEPARTED → IN_FLIGHT → LANDED → COMPLETED (~100 seconds total)
 
 ### Step 3: Send Events to Update Flight State
 
@@ -448,7 +397,7 @@ Via UI: Click "Announce Delay" and enter 45 minutes
 
 Via API:
 ```bash
-curl -X POST http://localhost:8080/api/flights/AA1234/delay?flightDate=2026-01-26 \
+curl -X POST http://localhost:8082/api/flights/AA1234/delay?flightDate=2026-01-26 \
   -H "Content-Type: application/json" \
   -d '{"minutes": 45}'
 ```
@@ -459,7 +408,7 @@ Via UI: Click "Change Gate" and enter `B24`
 
 Via API:
 ```bash
-curl -X POST http://localhost:8080/api/flights/AA1234/gate?flightDate=2026-01-26 \
+curl -X POST http://localhost:8082/api/flights/AA1234/gate?flightDate=2026-01-26 \
   -H "Content-Type: application/json" \
   -d '{"newGate": "B24"}'
 ```
@@ -473,10 +422,10 @@ Verify the workflow's current state using queries.
 **Via REST API:**
 ```bash
 # Get current state
-curl http://localhost:8080/api/flights/AA1234/state?flightDate=2026-01-26
+curl http://localhost:8082/api/flights/AA1234/state?flightDate=2026-01-26
 
 # Get complete flight details
-curl http://localhost:8080/api/flights/AA1234/details?flightDate=2026-01-26
+curl http://localhost:8082/api/flights/AA1234/details?flightDate=2026-01-26
 ```
 
 **Expected Result:** JSON response showing current state (e.g., IN_FLIGHT), gate (B24), and delay (45 minutes).
@@ -485,17 +434,17 @@ curl http://localhost:8080/api/flights/AA1234/details?flightDate=2026-01-26
 
 This step shows Temporal's durability - workflows survive process restarts.
 
-**Start a Long-Running Demo Flight:**
+**Start a Flight:**
 
-Via UI: Start a flight with number `DEMO999` (flight numbers starting with "DEMO" have 5-second delays between states for ~25 second total duration)
+Via UI: Start any flight (e.g., `TEST999`). Flights take ~100 seconds to complete (20 seconds per phase).
 
 **Simulate a Worker Failure:**
 
-Via UI: While DEMO999 is in progress, click the "⚡ Simulate Failure" button in the Active Flights panel
+Via UI: While the flight is in progress, click the "⚡ Simulate Failure" button in the Active Flights panel
 
 Via API:
 ```bash
-curl -X POST http://localhost:8080/api/admin/restart-worker
+curl -X POST http://localhost:8082/api/admin/restart-worker
 ```
 
 **Watch What Happens:**
@@ -523,7 +472,7 @@ Every workflow maintains a complete, immutable history of all events.
 
 **Via REST API:**
 ```bash
-curl http://localhost:8080/api/flights/AA1234/history?flightDate=2026-01-26
+curl http://localhost:8082/api/flights/AA1234/history?flightDate=2026-01-26
 ```
 
 **Expected Result:** Complete chronological history with timestamps showing every decision, state change, and signal. This immutable audit trail is valuable for compliance and debugging.
@@ -554,7 +503,7 @@ Demonstrate child workflow orchestration for connecting flights.
 
 **Start a Multi-Leg Journey:**
 ```bash
-curl -X POST http://localhost:8080/api/flights/journey \
+curl -X POST http://localhost:8082/api/flights/journey \
   -H "Content-Type: application/json" \
   -d '{
     "flights": [
@@ -613,7 +562,7 @@ You've now seen all four value propositions in action:
 
 **Cancel a Flight:**
 ```bash
-curl -X POST http://localhost:8080/api/flights/AA1234/cancel?flightDate=2026-01-26 \
+curl -X POST http://localhost:8082/api/flights/AA1234/cancel?flightDate=2026-01-26 \
   -H "Content-Type: application/json" \
   -d '{"reason": "Weather conditions"}'
 ```
@@ -637,7 +586,7 @@ The application includes an embedded web UI for real-time flight monitoring and 
 Open your browser and navigate to:
 
 ```
-http://localhost:8080
+http://localhost:8082
 ```
 
 ### UI Features
@@ -687,7 +636,7 @@ The application provides REST endpoints to interact with flight workflows:
 Start a new flight workflow:
 
 ```bash
-curl -X POST http://localhost:8080/api/flights/start \
+curl -X POST http://localhost:8082/api/flights/start \
   -H "Content-Type: application/json" \
   -d '{
     "flightNumber": "AA1234",
@@ -715,7 +664,7 @@ Response:
 Send a delay signal to a running flight:
 
 ```bash
-curl -X POST http://localhost:8080/api/flights/AA1234/delay?flightDate=2026-01-26 \
+curl -X POST http://localhost:8082/api/flights/AA1234/delay?flightDate=2026-01-26 \
   -H "Content-Type: application/json" \
   -d '{"minutes": 45}'
 ```
@@ -733,7 +682,7 @@ Response:
 Send a gate change signal to a running flight:
 
 ```bash
-curl -X POST http://localhost:8080/api/flights/AA1234/gate?flightDate=2026-01-26 \
+curl -X POST http://localhost:8082/api/flights/AA1234/gate?flightDate=2026-01-26 \
   -H "Content-Type: application/json" \
   -d '{"newGate": "B24"}'
 ```
@@ -751,7 +700,7 @@ Response:
 Send a cancellation signal to a running flight:
 
 ```bash
-curl -X POST http://localhost:8080/api/flights/AA1234/cancel?flightDate=2026-01-26 \
+curl -X POST http://localhost:8082/api/flights/AA1234/cancel?flightDate=2026-01-26 \
   -H "Content-Type: application/json" \
   -d '{"reason": "Weather conditions"}'
 ```
@@ -769,7 +718,7 @@ Response:
 Get the current state of a flight:
 
 ```bash
-curl http://localhost:8080/api/flights/AA1234/state?flightDate=2026-01-26
+curl http://localhost:8082/api/flights/AA1234/state?flightDate=2026-01-26
 ```
 
 Response:
@@ -785,7 +734,7 @@ Response:
 Get complete flight details:
 
 ```bash
-curl http://localhost:8080/api/flights/AA1234/details?flightDate=2026-01-26
+curl http://localhost:8082/api/flights/AA1234/details?flightDate=2026-01-26
 ```
 
 Response:
@@ -878,7 +827,7 @@ The application includes a special endpoint and UI button to simulate a worker f
 
 #### Via Web UI
 
-1. Start a long-running demo flight (use flight number starting with "DEMO", e.g., "DEMO999") - these flights have 5-second delays between states for a total of ~25 seconds
+1. Start a flight (e.g., "TEST999") - flights progress through states every 20 seconds (~100 seconds total)
 2. Watch the flight progress through states: SCHEDULED → BOARDING → DEPARTED → IN_FLIGHT → LANDED → COMPLETED
 3. While the flight is in progress, click the **"⚡ Simulate Failure"** button in the Active Flights panel
 4. The worker will stop and restart (simulating a crash and recovery)
@@ -890,7 +839,7 @@ The application includes a special endpoint and UI button to simulate a worker f
 Trigger a worker restart programmatically:
 
 ```bash
-curl -X POST http://localhost:8080/api/admin/restart-worker
+curl -X POST http://localhost:8082/api/admin/restart-worker
 ```
 
 Response:
@@ -919,7 +868,7 @@ INFO  - Worker stopped
 INFO  - Restarting worker...
 INFO  - Registered FlightWorkflowImpl and MultiLegFlightWorkflowImpl for task queue: flight-task-queue
 INFO  - Worker restarted. Workflows will resume from last checkpoint.
-INFO  - Flight DEMO999 is IN_FLIGHT (continues after restart)
+INFO  - Flight TEST999 is IN_FLIGHT (continues after restart)
 ```
 
 ### Key Durability Features Demonstrated
@@ -973,7 +922,7 @@ One of Temporal's powerful features is its **built-in audit trail** - every work
 Get the complete workflow history for a flight:
 
 ```bash
-curl http://localhost:8080/api/flights/AA1234/history?flightDate=2026-01-26
+curl http://localhost:8082/api/flights/AA1234/history?flightDate=2026-01-26
 ```
 
 Response (example):
@@ -1450,7 +1399,7 @@ Sent signal to workflow: flight-AA1234-2026-01-27
 
 Or query the workflow state:
 ```bash
-curl http://localhost:8080/api/flights/AA1234/details?flightDate=2026-01-27
+curl http://localhost:8082/api/flights/AA1234/details?flightDate=2026-01-27
 ```
 
 Should show `delay: 45` in the response.
@@ -1707,7 +1656,7 @@ Both provide value - Temporal for workflow debugging, MongoDB for business analy
 Once all services are running, you should see:
 
 - Temporal Web UI: `http://localhost:8233`
-- Application: `http://localhost:8080`
+- Application: `http://localhost:8082`
 - Kafka: `localhost:9092`
 - MongoDB: `localhost:27017`
 
@@ -1725,32 +1674,6 @@ Started Application in X seconds
 - **MongoDB** (via Homebrew) - Document persistence
 - **Apache Flink** (via Homebrew) - Stream processing
 - **WebSockets** - Real-time UI updates
-
-## Project Structure
-
-```
-temporal-jetstream/
-├── src/
-│   ├── main/
-│   │   ├── java/com/temporal/jetstream/
-│   │   │   ├── Application.java
-│   │   │   ├── config/          # Spring and Temporal configuration
-│   │   │   ├── workflow/        # Temporal workflow definitions
-│   │   │   ├── activity/        # Temporal activities
-│   │   │   ├── controller/      # REST API controllers
-│   │   │   ├── service/         # Business services
-│   │   │   ├── model/           # Domain models
-│   │   │   ├── dto/             # Data transfer objects
-│   │   │   ├── repository/      # MongoDB repositories
-│   │   │   └── flink/           # Flink jobs
-│   │   └── resources/
-│   │       ├── application.yml  # Application configuration
-│   │       └── static/          # Web UI (HTML, CSS, JS)
-│   └── test/
-│       └── java/com/temporal/jetstream/
-├── pom.xml
-└── README.md
-```
 
 ## Stopping the Services
 
@@ -1778,13 +1701,83 @@ This is the initial project setup. Future stories will add:
 - Kafka integration
 - Failure recovery demonstrations
 
+## Demo & Test Scripts
+
+The project includes several scripts for testing and demonstrating Temporal's capabilities.
+
+### Chaos Testing - Launch Multiple Flights
+
+Launch many flights simultaneously to test Temporal's durability under chaos conditions (killing services, restarting workers, etc.):
+
+```bash
+./chaos-flights.sh                    # Launch flights against localhost:8082
+./chaos-flights.sh http://host:port   # Custom URL
+```
+
+**What it does:**
+- Launches flights in parallel (CHS001, CHS002, etc.)
+- Uses variety of airports (ORD, DFW, LAX, JFK, ATL, etc.)
+- Prints chaos testing commands at the end
+
+**Chaos testing suggestions:**
+```bash
+# Kill MongoDB while flights are running
+brew services stop mongodb-community
+
+# Kill Kafka
+brew services stop kafka
+
+# Use "Simulate Failure" button in UI to restart worker
+
+# Kill the Spring Boot app (Ctrl+C) and restart it
+```
+
+Watch the Temporal UI at http://localhost:8233 - workflows will pause and automatically resume when services come back!
+
+### Multi-Leg Journey Demo
+
+Demonstrate parent-child workflow orchestration with a 3-leg connecting flight:
+
+```bash
+./demo-multileg.sh                    # Launch against localhost:8082
+./demo-multileg.sh http://host:port   # Custom URL
+```
+
+**What it creates:**
+- A 3-leg journey: ORD → DFW → PHX → LAX
+- Parent workflow orchestrates 3 child workflows
+- Sequential execution (Leg 2 waits for Leg 1 to complete)
+- Aircraft handoff between legs
+
+**Key demonstrations:**
+- Parent-child workflow pattern
+- Cascade cancellation (cancel one leg → subsequent legs auto-cancel)
+- Temporal UI shows workflow hierarchy
+
+**Timeline:** ~5 minutes total (100s per leg + turnaround)
+
+### Start Flink Enrichment Job
+
+Start the optional Flink stream processing job for event enrichment:
+
+```bash
+./start-flink.sh
+```
+
+**What it does:**
+- Consumes from `raw-flight-events` Kafka topic
+- Enriches events with calculated fields (estimatedDelay, riskScore)
+- Produces to `flight-events` topic
+
+**Note:** The Flink job is optional - the app works without it. Events can go directly to `flight-events`.
+
 ## Troubleshooting
 
 ### Application won't start
 
 - Verify Java version: `java -version` (should be 21)
 - Check Temporal is running: `temporal server start-dev`
-- Ensure ports are available: 8080 (app), 7233 (Temporal), 9092 (Kafka), 27017 (MongoDB), 8081 (Flink)
+- Ensure ports are available: 8082 (app), 7233 (Temporal), 9092 (Kafka), 27017 (MongoDB), 8081 (Flink)
 - Verify all services are running: `brew services list`
 
 ### Services won't start
@@ -1841,12 +1834,15 @@ curl http://localhost:8081
 
 ### Default Ports
 
-- **Application**: 8080
+- **Zookeeper (Kafka)**: 8080 (admin server)
+- **Flink Web UI**: 8081
+- **Application**: 8082
 - **Temporal Server**: 7233
 - **Temporal Web UI**: 8233
 - **Kafka**: 9092
 - **MongoDB**: 27017
-- **Flink Web UI**: 8081
+
+**Note:** Zookeeper's admin server uses port 8080 by default, and Flink uses 8081, so the Spring Boot application is configured to use port 8082 to avoid conflicts.
 
 ## Contributing
 
