@@ -9,38 +9,55 @@ A demonstration application showing how Temporal provides durability, reliabilit
 ```
 ┌─────────────────┐
 │  External       │
-│  Systems        │──┐
-│  (Gate, Crew,   │  │
-│   Weather, etc) │  │
-└─────────────────┘  │
-                     │
-                     ▼
-              ┌──────────────┐
-              │    Kafka     │◄────── High-throughput
-              │   (Events)   │        event streaming
-              └──────┬───────┘
-                     │
-          ┌──────────┴──────────┐
-          │                     │
-          ▼                     ▼
-    ┌─────────────┐      ┌─────────────┐
-    │    Flink    │      │  Temporal   │
-    │ (Analytics) │      │ (Workflow   │
-    │             │      │  Execution) │
-    └─────────────┘      └──────┬──────┘
-          │                     │
-          │              ┌──────┴──────┐
-          │              │             │
-          ▼              ▼             ▼
-    ┌──────────┐   ┌─────────┐  ┌───────────┐
-    │ Metrics  │   │ Flight  │  │ WebSocket │
-    │   DB     │   │ State   │  │  Updates  │
-    └──────────┘   └─────────┘  └─────┬─────┘
-                                       │
-                                       ▼
-                                 ┌──────────┐
-                                 │  Web UI  │
-                                 └──────────┘
+│  Systems        │
+│  (Gate, Crew,   │
+│   Weather, etc) │
+└────────┬────────┘
+         │ Publishes raw events
+         ▼
+┌─────────────────────┐
+│ Kafka: raw-flight-  │
+│        events       │
+└──────────┬──────────┘
+           │
+           ▼
+    ┌──────────────┐
+    │    Flink     │ ← Enriches events:
+    │  Enrichment  │   - estimatedDelay
+    │     Job      │   - riskScore
+    └──────┬───────┘   - enrichedTimestamp
+           │
+           ▼
+┌─────────────────────┐
+│ Kafka: flight-events│
+└──────────┬──────────┘
+           │
+           ▼
+    ┌──────────────┐
+    │  FlightEvent │ ← Sends signals
+    │   Consumer   │   to workflows
+    └──────┬───────┘
+           │
+           ▼
+    ┌──────────────┐
+    │   Temporal   │ ← Durable workflow
+    │   Workflows  │   orchestration
+    └──────┬───────┘
+           │
+    ┌──────┴──────┬──────────┐
+    │             │          │
+    ▼             ▼          ▼
+┌────────┐  ┌─────────┐  ┌─────────┐
+│MongoDB │  │  Kafka: │  │WebSocket│
+│History │  │flight-  │  │ Events  │
+│        │  │state-   │  │         │
+│        │  │changes  │  │         │
+└────────┘  └─────────┘  └────┬────┘
+                              │
+                              ▼
+                         ┌─────────┐
+                         │ Web UI  │
+                         └─────────┘
 ```
 
 ### How Temporal Complements Kafka/Flink
@@ -63,8 +80,8 @@ A demonstration application showing how Temporal provides durability, reliabilit
 
 Together, they create a comprehensive airline operations platform:
 - **Events flow through Kafka** (gate changes, delays, crew updates)
-- **Flink processes metrics** (on-time performance, capacity utilization)
-- **Temporal orchestrates workflows** (flight lifecycle, multi-leg journeys)
+- **Flink enriches events** (adds risk scores, delay estimates, calculated fields)
+- **Temporal orchestrates workflows** (flight lifecycle, multi-leg journeys, durable execution)
 
 ### The Four 'ilities: Temporal's Value Proposition
 
@@ -141,6 +158,7 @@ Before running the application, ensure you have the following installed:
 - **Java 21** - [Download from Oracle](https://www.oracle.com/java/technologies/downloads/#java21) or use SDKMAN
 - **Docker & Docker Compose** - For running Kafka and MongoDB
 - **Temporal Server** - Running locally via `temporal server start-dev`
+- **Apache Flink** - For stream processing and event enrichment
 
 ### Installing Temporal CLI
 
@@ -154,6 +172,33 @@ curl -sSf https://temporal.download/cli.sh | sh
 # Windows (via Scoop)
 scoop install temporal
 ```
+
+### Installing Apache Flink
+
+```bash
+# macOS
+brew install apache-flink
+
+# Linux - download and extract from Apache Flink website
+wget https://dlcdn.apache.org/flink/flink-2.0.0/flink-2.0.0-bin-scala_2.12.tgz
+tar -xzf flink-2.0.0-bin-scala_2.12.tgz
+sudo mv flink-2.0.0 /opt/flink
+```
+
+### Setting Up Flink Aliases (macOS)
+
+Flink doesn't run as a brew service (no plist available), so we use aliases for convenience:
+
+```bash
+# Add these to ~/.zshrc or ~/.bash_profile
+alias start-flink='/opt/homebrew/Cellar/apache-flink/2.0.0/libexec/bin/start-cluster.sh'
+alias stop-flink='/opt/homebrew/Cellar/apache-flink/2.0.0/libexec/bin/stop-cluster.sh'
+
+# Reload your shell configuration
+source ~/.zshrc  # or source ~/.bash_profile
+```
+
+**Note:** Adjust the version number in the path if you have a different Flink version installed. Check with `ls /opt/homebrew/Cellar/apache-flink/` to see your installed version.
 
 ## Quick Start
 
@@ -180,12 +225,35 @@ Verify services are running:
 docker-compose ps
 ```
 
-### 3. Create Kafka Topics
+### 3. Start Apache Flink
+
+Start the Flink standalone cluster:
+
+```bash
+start-flink
+```
+
+Verify Flink is running by accessing the Web UI at `http://localhost:8081`.
+
+To stop Flink later:
+```bash
+stop-flink
+```
+
+### 4. Create Kafka Topics
 
 Create the required Kafka topics for event ingestion and state change publishing:
 
 ```bash
-# Create flight-events topic (for external events → workflows)
+# Create raw-flight-events topic (for external events → Flink enrichment)
+docker exec temporal-jetstream-kafka-1 kafka-topics \
+  --create \
+  --topic raw-flight-events \
+  --bootstrap-server localhost:9092 \
+  --partitions 1 \
+  --replication-factor 1
+
+# Create flight-events topic (for Flink enriched events → workflows)
 docker exec temporal-jetstream-kafka-1 kafka-topics \
   --create \
   --topic flight-events \
@@ -209,13 +277,35 @@ docker exec temporal-jetstream-kafka-1 kafka-topics \
 
 **Note:** Kafka auto-creates topics by default, but explicit creation ensures proper configuration.
 
-### 4. Build the Application
+### 5. Build the Application
 
 ```bash
 ./mvnw clean install
 ```
 
-### 5. Run the Application
+This will build both the Spring Boot application and the Flink enrichment job JAR (`target/flink-enrichment-job.jar`).
+
+### 6. Submit Flink Job
+
+Submit the Flink enrichment job to the running Flink cluster:
+
+```bash
+flink run -c com.temporal.jetstream.flink.FlinkEnrichmentJob target/flink-enrichment-job.jar
+```
+
+Verify the job is running in the Flink Web UI at `http://localhost:8081`.
+
+To list running jobs:
+```bash
+flink list
+```
+
+To cancel a job:
+```bash
+flink cancel <job-id>
+```
+
+### 7. Run the Application
 
 ```bash
 ./mvnw spring-boot:run
@@ -1170,6 +1260,205 @@ This demo focuses on the Temporal orchestration piece, showing how it complement
 - Together: Event-driven workflows that survive failures
 
 For airlines, this means gate systems can publish events to Kafka, and those events automatically drive flight workflows without tight coupling or complex state management.
+
+## Flink Stream Processing Integration
+
+The application demonstrates the architectural pattern where **Flink handles stateful stream processing and enrichment** while **Temporal handles durable orchestration**. This separation of concerns creates a robust, scalable system.
+
+### Architecture Overview
+
+```
+External Systems (Gate, Crew, Weather)
+        ↓
+   [raw-flight-events topic]
+        ↓
+   Flink Enrichment Job ← Stateless map() function
+        ↓                  - Adds estimatedDelay
+        ↓                  - Calculates riskScore
+        ↓                  - Adds enrichedTimestamp
+        ↓
+   [flight-events topic]
+        ↓
+   FlightEventConsumer → Sends signals to workflows
+        ↓
+   Temporal Workflows (Durable orchestration)
+```
+
+### How It Works
+
+1. **External systems publish raw events** to the `raw-flight-events` Kafka topic (e.g., delay announcements, gate changes)
+2. **Flink consumes raw events** and enriches them with calculated fields:
+   - `estimatedDelay`: Parsed from event data or calculated based on event type
+   - `riskScore`: Risk level (LOW, MEDIUM, HIGH) based on delay thresholds
+   - `enrichedTimestamp`: When the enrichment occurred
+3. **Flink publishes enriched events** to the `flight-events` topic
+4. **FlightEventConsumer** (Spring Kafka) reads enriched events and sends signals to Temporal workflows
+5. **Temporal workflows** process signals and update flight state
+
+### Enrichment Logic
+
+The Flink job implements simple enrichment for demo purposes:
+
+```java
+// Risk Score Calculation
+if (estimatedDelay > 60 minutes) -> HIGH risk
+else if (estimatedDelay > 30 minutes) -> MEDIUM risk
+else -> LOW risk
+```
+
+For production systems, Flink enrichment might include:
+- Weather data correlation
+- Historical delay pattern analysis
+- Crew availability checks
+- Airport capacity calculations
+- Passenger connection impact
+
+### Building and Running the Flink Job
+
+#### Build the Flink JAR
+
+```bash
+./mvnw clean package
+```
+
+This creates `target/flink-enrichment-job.jar` with all dependencies bundled (via Maven Shade Plugin).
+
+#### Start Flink Cluster
+
+```bash
+start-flink
+```
+
+Verify Flink Web UI is accessible at `http://localhost:8081`.
+
+#### Submit the Job
+
+```bash
+flink run -c com.temporal.jetstream.flink.FlinkEnrichmentJob target/flink-enrichment-job.jar
+```
+
+#### Verify Job is Running
+
+Check the Flink Web UI at `http://localhost:8081` - you should see "Flight Event Enrichment Job" in the running jobs list.
+
+Or use CLI:
+```bash
+flink list
+```
+
+### Testing the Integration
+
+#### 1. Publish a Raw Event to Kafka
+
+```bash
+# Publish a delay event to raw-flight-events topic
+docker exec -i temporal-jetstream-kafka-1 kafka-console-producer \
+  --broker-list localhost:9092 \
+  --topic raw-flight-events << EOF
+{
+  "eventType": "DELAY_ANNOUNCED",
+  "flightNumber": "AA1234",
+  "flightDate": "2026-01-27",
+  "data": "{\"delayMinutes\":45}"
+}
+EOF
+```
+
+#### 2. Verify Enriched Event in flight-events Topic
+
+```bash
+# Monitor flight-events topic to see enriched event
+docker exec temporal-jetstream-kafka-1 kafka-console-consumer \
+  --bootstrap-server localhost:9092 \
+  --topic flight-events \
+  --from-beginning
+```
+
+You should see the enriched event with additional fields:
+```json
+{
+  "eventType": "DELAY_ANNOUNCED",
+  "flightNumber": "AA1234",
+  "flightDate": "2026-01-27",
+  "data": "{\"delayMinutes\":45}",
+  "estimatedDelay": 45,
+  "riskScore": "MEDIUM",
+  "enrichedTimestamp": "2026-01-27T10:30:00"
+}
+```
+
+#### 3. Verify Workflow Received Signal
+
+Check application logs for:
+```
+Received Kafka event: DELAY_ANNOUNCED for flight AA1234
+Sent signal to workflow: flight-AA1234-2026-01-27
+```
+
+Or query the workflow state:
+```bash
+curl http://localhost:8080/api/flights/AA1234/details?flightDate=2026-01-27
+```
+
+Should show `delay: 45` in the response.
+
+### Managing the Flink Job
+
+#### List Running Jobs
+```bash
+flink list
+```
+
+#### Cancel a Job
+```bash
+flink cancel <job-id>
+```
+
+#### Stop Flink Cluster
+```bash
+stop-flink
+```
+
+### Why Flink + Temporal?
+
+**Flink** excels at:
+- High-throughput stream processing (millions of events/second)
+- Stateful computations (aggregations, windowing)
+- Real-time analytics and metrics
+- Event-time processing with watermarks
+
+**Temporal** excels at:
+- Durable, long-running workflows (hours to days)
+- Multi-step process orchestration
+- Guaranteed execution with retries
+- Complete audit trail of decisions
+
+**Together** they provide:
+- **Stream Processing**: Flink enriches and aggregates events in real-time
+- **Orchestration**: Temporal coordinates multi-step flight operations
+- **Durability**: Workflows survive failures and resume automatically
+- **Observability**: Complete history of both events and workflow decisions
+
+### Architecture Notes
+
+- **Stateless Enrichment**: The Flink job uses a simple `map()` function (no state management needed for this demo)
+- **Loose Coupling**: Flink and Temporal communicate asynchronously via Kafka topics
+- **Independent Scaling**: Flink and Temporal workers can scale independently based on load
+- **Failure Isolation**: Flink restart doesn't affect running Temporal workflows
+
+For airlines:
+- **Flink processes real-time metrics**: On-time performance, capacity utilization, delay patterns
+- **Temporal orchestrates operations**: Flight lifecycle, crew scheduling, passenger rebooking
+- **Kafka connects them**: Event-driven, loosely coupled, highly scalable architecture
+
+### Flink Web UI
+
+Access the Flink dashboard at `http://localhost:8081` to monitor:
+- Running jobs and their status
+- Task parallelism and distribution
+- Backpressure and throughput metrics
+- Checkpoint and savepoint information
+- Job execution timeline
 
 ## MongoDB Persistence for Flight State History
 
