@@ -1,21 +1,32 @@
 #!/bin/bash
-# Chaos Flight Launcher - Start 20 flights simultaneously for chaos testing
+# Chaos Flight Launcher - Start multiple flights simultaneously for chaos testing
 #
-# Usage: ./chaos-flights.sh [base_url]
+# Usage: ./demo-chaos.sh [count] [base_url]
+#   count:    Number of flights to launch (default: 20)
 #   base_url: Optional, defaults to http://localhost:8082
 #
-# This script launches 20 flights at once to test Temporal's durability
-# while you kill services (MongoDB, Kafka, workers, etc.)
+# Examples:
+#   ./demo-chaos.sh              # Launch 20 flights
+#   ./demo-chaos.sh 50           # Launch 50 flights
+#   ./demo-chaos.sh 200          # Launch 200 flights
+#   ./demo-chaos.sh 100 http://host:8082  # Launch 100 flights to custom URL
+#
+# Flight numbers use format: <BatchID><SeqNum> (e.g., X7A001, X7A002)
+# BatchID is unique per run, so you can run the script multiple times.
 
 set -e
 
-BASE_URL="${1:-http://localhost:8082}"
+# Parse arguments
+COUNT="${1:-20}"
+BASE_URL="${2:-http://localhost:8082}"
 API_URL="$BASE_URL/api/flights/start"
+
+# Generate unique batch ID (3 chars: letter + digit + letter)
+BATCH_ID=$(cat /dev/urandom | LC_ALL=C tr -dc 'A-Z' | head -c1)$(cat /dev/urandom | LC_ALL=C tr -dc '0-9' | head -c1)$(cat /dev/urandom | LC_ALL=C tr -dc 'A-Z' | head -c1)
 
 # Arrays of airports for variety
 DEPARTURES=("ORD" "DFW" "LAX" "JFK" "ATL" "DEN" "SFO" "SEA" "MIA" "BOS")
 ARRIVALS=("PHX" "LAS" "MSP" "DTW" "PHL" "CLT" "IAH" "EWR" "SAN" "TPA")
-GATES=("A1" "A2" "B3" "B4" "C5" "C6" "D7" "D8" "E9" "E10" "F11" "F12" "G13" "G14" "H15" "H16" "J17" "J18" "K19" "K20")
 
 # Get today's date
 TODAY=$(date +%Y-%m-%d)
@@ -25,26 +36,24 @@ echo "=============================================="
 echo "  Chaos Flight Launcher"
 echo "=============================================="
 echo "Target: $API_URL"
-echo "Date: $TODAY"
+echo "Batch:  $BATCH_ID"
+echo "Count:  $COUNT flights"
 echo ""
-echo "Launching 20 flights..."
+echo "Launching flights..."
 echo ""
 
-# Track results
-SUCCESS=0
-FAILED=0
-
-# Launch 20 flights
-for i in $(seq 1 2000); do
-    # Generate flight data
-    FLIGHT_NUM=$(printf "CHS%03d" $i)
+# Launch flights
+for i in $(seq 1 $COUNT); do
+    # Generate flight data with batch ID prefix
+    FLIGHT_NUM=$(printf "%s%03d" "$BATCH_ID" $i)
     DEP_IDX=$(( (i - 1) % 10 ))
     ARR_IDX=$(( (i + 4) % 10 ))
+    GATE_NUM=$(( (i - 1) % 20 + 1 ))
 
     DEP="${DEPARTURES[$DEP_IDX]}"
     ARR="${ARRIVALS[$ARR_IDX]}"
-    GATE="${GATES[$((i - 1))]}"
-    AIRCRAFT=$(printf "N%03dCH" $i)
+    GATE=$(printf "%c%d" $(printf "\\$(printf '%03o' $((65 + (i - 1) % 10)))") $GATE_NUM)
+    AIRCRAFT=$(printf "N%s%03d" "$BATCH_ID" $i)
 
     # Create JSON payload
     JSON=$(cat <<EOF
@@ -82,7 +91,7 @@ wait
 
 echo ""
 echo "=============================================="
-echo "  All 20 flights launched!"
+echo "  All $COUNT flights launched! (Batch: $BATCH_ID)"
 echo "=============================================="
 echo ""
 echo "Now go cause chaos:"
