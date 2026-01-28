@@ -17,11 +17,11 @@ public class FlightWorkflowImpl implements FlightWorkflow {
     private static final Logger logger = Workflow.getLogger(FlightWorkflowImpl.class);
 
     // Timing constants
-    private static final int DEMO_SPEED_FACTOR = 120; // 120x faster for demos
-    private static final long SCHEDULED_TO_BOARDING_HOURS = 2; // 2 hours before departure
-    private static final long BOARDING_TO_DEPARTED_MINUTES = 30; // 30 minutes boarding
-    private static final long DEPARTED_TO_INFLIGHT_MINUTES = 5; // 5 minutes taxi and takeoff
-    private static final long LANDED_TO_COMPLETED_MINUTES = 30; // 30 minutes deboarding
+    private static final int DEMO_SPEED_FACTOR = 1200; // 120x faster for demos
+    private static final long SCHEDULED_TO_BOARDING_MINUTES = 1; // 2 hours before departure
+    private static final long BOARDING_TO_DEPARTED_MINUTES = 1; // 30 minutes boarding
+    private static final long DEPARTED_TO_INFLIGHT_MINUTES = 1; // 5 minutes taxi and takeoff
+    private static final long LANDED_TO_COMPLETED_MINUTES = 1; // 30 minutes deboarding
 
     // Instance variables to track signal data
     private int delayMinutes = 0;
@@ -65,7 +65,7 @@ public class FlightWorkflowImpl implements FlightWorkflow {
         }
 
         // Calculate realistic durations
-        Duration scheduledToBoardingDuration = calculateDuration(SCHEDULED_TO_BOARDING_HOURS * 60, isDemoMode);
+        Duration scheduledToBoardingDuration = calculateDuration(SCHEDULED_TO_BOARDING_MINUTES, isDemoMode);
         Duration boardingToDepartedDuration = calculateDuration(BOARDING_TO_DEPARTED_MINUTES, isDemoMode);
         Duration departedToInflightDuration = calculateDuration(DEPARTED_TO_INFLIGHT_MINUTES, isDemoMode);
         Duration inflightToLandedDuration = calculateFlightDuration(flight, isDemoMode);
