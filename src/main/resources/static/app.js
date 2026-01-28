@@ -7,8 +7,10 @@ let activeFlights = new Map();
 document.addEventListener('DOMContentLoaded', function() {
     connectWebSocket();
     setupFormHandlers();
-    // Refresh flights periodically (fallback if WebSocket misses updates)
-    setInterval(refreshFlights, 30000); // Every 30 seconds
+    // Load active flights on initial page load
+    refreshActiveFlights();
+    // Refresh active flights periodically (every 5 seconds)
+    setInterval(refreshActiveFlights, 5000);
 });
 
 // WebSocket Connection
@@ -134,12 +136,59 @@ async function fetchFlightDetails(flightNumber) {
     }
 }
 
-// Refresh all flights (manual refresh)
-async function refreshFlights() {
-    // Note: In a real app, we'd have a list endpoint
-    // For now, we just re-query the flights we know about
-    for (const flightNumber of activeFlights.keys()) {
-        await fetchFlightDetails(flightNumber);
+// Refresh active flights from server
+async function refreshActiveFlights() {
+    try {
+        const response = await fetch('/api/flights/active');
+        if (response.ok) {
+            const flights = await response.json();
+
+            // Clear current active flights
+            activeFlights.clear();
+
+            // Add all active flights from server
+            flights.forEach(flight => {
+                // Convert ActiveFlightDTO to Flight-like object for display
+                const flightObj = {
+                    flightNumber: flight.flightNumber,
+                    currentState: flight.currentState,
+                    gate: flight.gate,
+                    delay: flight.delay,
+                    workflowId: flight.workflowId,
+                    elapsedTime: formatDuration(flight.elapsedTime)
+                };
+                activeFlights.set(flight.flightNumber, flightObj);
+            });
+
+            renderFlights();
+
+            console.log(`Refreshed ${flights.length} active flights`);
+        } else {
+            console.error('Failed to fetch active flights:', response.status);
+        }
+    } catch (error) {
+        console.error('Error refreshing active flights:', error);
+    }
+}
+
+// Format duration for display
+function formatDuration(duration) {
+    if (!duration) return '0s';
+
+    // Duration format from Java: PT#H#M#S or similar
+    const matches = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?/);
+    if (!matches) return duration;
+
+    const hours = parseInt(matches[1] || 0);
+    const minutes = parseInt(matches[2] || 0);
+    const seconds = Math.floor(parseFloat(matches[3] || 0));
+
+    if (hours > 0) {
+        return `${hours}h ${minutes}m`;
+    } else if (minutes > 0) {
+        return `${minutes}m ${seconds}s`;
+    } else {
+        return `${seconds}s`;
     }
 }
 
@@ -179,20 +228,20 @@ function createFlightCard(flight) {
         </div>
         <div class="flight-info">
             <div class="flight-info-item">
-                <span class="flight-info-label">Route</span>
-                <span class="flight-info-value">${flight.departureStation} → ${flight.arrivalStation}</span>
+                <span class="flight-info-label">State</span>
+                <span class="flight-info-value">${stateClass}</span>
             </div>
             <div class="flight-info-item">
                 <span class="flight-info-label">Gate</span>
                 <span class="flight-info-value">${flight.gate || 'N/A'}</span>
             </div>
             <div class="flight-info-item">
-                <span class="flight-info-label">Aircraft</span>
-                <span class="flight-info-value">${flight.aircraft || 'N/A'}</span>
+                <span class="flight-info-label">Delay</span>
+                <span class="flight-info-value">${flight.delay > 0 ? flight.delay + ' min' : '0 min'}</span>
             </div>
             <div class="flight-info-item">
-                <span class="flight-info-label">Delay</span>
-                <span class="flight-info-value">${delayText || '0 min'}</span>
+                <span class="flight-info-label">Running</span>
+                <span class="flight-info-value">${flight.elapsedTime || 'N/A'}</span>
             </div>
         </div>
     `;
@@ -200,10 +249,25 @@ function createFlightCard(flight) {
     return card;
 }
 
-function selectFlight(flight) {
+async function selectFlight(flight) {
     selectedFlight = flight;
     renderFlights(); // Re-render to show selection
-    displayFlightDetails(flight);
+
+    // Fetch full flight details from the server
+    try {
+        const response = await fetch(`/api/flights/${flight.flightNumber}/details`);
+        if (response.ok) {
+            const fullFlight = await response.json();
+            selectedFlight = fullFlight;
+            displayFlightDetails(fullFlight);
+        } else {
+            // Fall back to basic flight data
+            displayFlightDetails(flight);
+        }
+    } catch (error) {
+        console.error('Error fetching full flight details:', error);
+        displayFlightDetails(flight);
+    }
 }
 
 function displayFlightDetails(flight) {

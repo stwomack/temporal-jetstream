@@ -5,6 +5,7 @@ import com.temporal.jetstream.model.Flight;
 import com.temporal.jetstream.model.FlightState;
 import com.temporal.jetstream.model.FlightStateTransition;
 import com.temporal.jetstream.repository.FlightStateTransitionRepository;
+import com.temporal.jetstream.service.ActiveFlightService;
 import com.temporal.jetstream.service.FlightEventProducer;
 import com.temporal.jetstream.service.FlightEventService;
 import com.temporal.jetstream.service.HistoryService;
@@ -50,6 +51,9 @@ public class FlightController {
 
     @Autowired
     private FlightStateTransitionRepository transitionRepository;
+
+    @Autowired
+    private ActiveFlightService activeFlightService;
 
     @Value("${temporal.task-queue}")
     private String taskQueue;
@@ -439,6 +443,28 @@ public class FlightController {
             logger.error("Error retrieving transition history for flight {}: {}", flightNumber, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new ErrorResponse("TRANSITION_HISTORY_ERROR", e.getMessage()));
+        }
+    }
+
+    @Operation(summary = "Get all active flights",
+               description = "Lists all currently running flight workflows")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Active flights retrieved successfully"),
+            @ApiResponse(responseCode = "500", description = "Failed to retrieve active flights")
+    })
+    @GetMapping("/active")
+    public ResponseEntity<?> getActiveFlights() {
+        try {
+            List<ActiveFlightDTO> activeFlights = activeFlightService.getActiveFlights();
+
+            logger.info("Retrieved {} active flights", activeFlights.size());
+
+            return ResponseEntity.ok(activeFlights);
+
+        } catch (Exception e) {
+            logger.error("Error retrieving active flights: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ErrorResponse("ACTIVE_FLIGHTS_ERROR", e.getMessage()));
         }
     }
 
