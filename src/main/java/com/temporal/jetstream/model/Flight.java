@@ -16,12 +16,10 @@ public class Flight {
     private int delay; // in minutes
     private String previousFlightNumber;
     private String nextFlightNumber;
-    private boolean isDemoMode; // true for 120x speed demo mode, false for realistic timing
 
     public Flight() {
         this.currentState = FlightState.SCHEDULED;
         this.delay = 0;
-        this.isDemoMode = false;
     }
 
     public Flight(String flightNumber, LocalDate flightDate, String departureStation,
@@ -134,14 +132,6 @@ public class Flight {
 
     public void setNextFlightNumber(String nextFlightNumber) {
         this.nextFlightNumber = nextFlightNumber;
-    }
-
-    public boolean isDemoMode() {
-        return isDemoMode;
-    }
-
-    public void setDemoMode(boolean demoMode) {
-        isDemoMode = demoMode;
     }
 
     @Override

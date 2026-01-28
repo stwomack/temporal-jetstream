@@ -94,8 +94,7 @@ public class ActiveFlightService {
                             flightDetails.getGate(),
                             flightDetails.getDelay(),
                             startTime,
-                            elapsedTime,
-                            flightDetails.isDemoMode()
+                            elapsedTime
                     );
 
                     activeFlights.add(activeFlightDTO);

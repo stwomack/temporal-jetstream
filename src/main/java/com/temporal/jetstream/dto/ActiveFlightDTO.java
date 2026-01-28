@@ -13,13 +13,12 @@ public class ActiveFlightDTO {
     private int delay;
     private Instant startTime;
     private Duration elapsedTime;
-    private boolean isDemoMode;
 
     public ActiveFlightDTO() {
     }
 
     public ActiveFlightDTO(String workflowId, String flightNumber, FlightState currentState,
-                          String gate, int delay, Instant startTime, Duration elapsedTime, boolean isDemoMode) {
+                          String gate, int delay, Instant startTime, Duration elapsedTime) {
         this.workflowId = workflowId;
         this.flightNumber = flightNumber;
         this.currentState = currentState;
@@ -27,7 +26,6 @@ public class ActiveFlightDTO {
         this.delay = delay;
         this.startTime = startTime;
         this.elapsedTime = elapsedTime;
-        this.isDemoMode = isDemoMode;
     }
 
     public String getWorkflowId() {
@@ -84,13 +82,5 @@ public class ActiveFlightDTO {
 
     public void setElapsedTime(Duration elapsedTime) {
         this.elapsedTime = elapsedTime;
-    }
-
-    public boolean isDemoMode() {
-        return isDemoMode;
-    }
-
-    public void setDemoMode(boolean demoMode) {
-        isDemoMode = demoMode;
     }
 }
