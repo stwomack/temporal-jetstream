@@ -481,7 +481,7 @@
       "id": "story-16",
       "title": "Realistic Workflow Timing and Demo Mode",
       "priority": 16,
-      "passes": false,
+      "passes": true,
       "description": "Adjust workflow timing to reflect realistic multi-day flight lifecycle with special DEMO mode for faster demonstrations",
       "acceptanceCriteria": [
         "Default workflow timing uses realistic durations: SCHEDULED->BOARDING (2-3 hours before departure), BOARDING->DEPARTED (30 minutes), DEPARTED->IN_FLIGHT (actual flight duration based on distance), IN_FLIGHT->LANDED (arrival time), LANDED->COMPLETED (30 minutes)",
@@ -509,7 +509,7 @@
       "id": "story-17",
       "title": "Remove Docker Compose and Update All Documentation",
       "priority": 17,
-      "passes": false,
+      "passes": true,
       "description": "Remove docker-compose.yml and update all documentation to reflect local services approach (brew services for Kafka/MongoDB, aliases for Flink)",
       "acceptanceCriteria": [
         "Delete docker-compose.yml file from project",

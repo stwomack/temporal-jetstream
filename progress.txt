@@ -886,3 +886,162 @@
 - All quality checks passed: compile successful, all tests passing (including 3 new tests)
 
 ---
+## 2026-01-27 21:43 - story-16
+
+**What was implemented:**
+- Added isDemoMode boolean field to Flight model for explicit timing mode control
+- Implemented realistic timing calculations in FlightWorkflowImpl:
+  * Defined timing constants: 2 hours SCHEDULED→BOARDING, 30 min BOARDING→DEPARTED, 5 min DEPARTED→IN_FLIGHT, 30 min LANDED→COMPLETED
+  * Flight duration calculated from scheduledDeparture/scheduledArrival (defaults to 2 hours)
+  * calculateDuration() method applies 120x speed factor for demo mode
+  * Dual detection: isDemoMode flag OR DEMO prefix for backward compatibility
+- Enhanced workflow logging with formatDuration() helper:
+  * Logs show human-readable durations: "2 hours", "30 minutes", "15 seconds"
+  * Each sleep logs: "Sleeping for [duration] ([timing mode])"
+  * Timing mode logged at workflow start: "[Mode: Demo Speed (120x)]" or "[Mode: Real-time]"
+- Extracted handleCancellation() method to reduce code duplication
+- Added demo mode checkbox to Web UI form (checked by default):
+  * Label: "Demo Mode (120x speed) - Recommended for presentations"
+  * Helper text explains unchecked = realistic multi-hour/day timing
+- Updated startFlight() JavaScript to include demoMode in POST request
+- Added timing mode indicators throughout UI:
+  * Active Flights panel: Badge shows "Demo Speed (120x)" (yellow) or "Real-time" (blue)
+  * Flight Details panel: New "Timing Mode" row with colored badge
+  * createFlightCard() checks both isDemoMode field and DEMO prefix
+  * displayFlightDetails() shows timing mode with appropriate badge color
+- Updated ActiveFlightDTO with isDemoMode field and constructor parameter
+- Updated ActiveFlightService.getActiveFlights() to include isDemoMode from workflow query
+- Created comprehensive README "Workflow Timing Modes" section (66 lines):
+  * Demo Mode explanation: 120x speed, 3-5 minute total duration, timing breakdown
+  * Real-time Mode explanation: Realistic airline timing, 5+ hour duration, timing breakdown
+  * Timing mode indicators documentation
+  * Use case recommendations table (presentations, dev, testing, durability showcase)
+- Updated Demo Script Step 2 to mention demo mode checkbox and demoMode JSON field
+- Created TimingModeTest with 4 test cases:
+  * testDemoModeFlightCompletesSuccessfully: Verifies demo mode flag preserved through execution
+  * testDemoModeFlagIsRespected: Tests isDemoMode=true results in completed demo flight
+  * testDemoPrefixActivatesDemoMode: Tests backward compatibility with DEMO prefix
+  * testRealTimeModeFlightCompletes: Verifies real-time mode completes with isDemoMode=false
+- All tests use TestWorkflowExtension with parameter injection pattern for clean setup
+
+**Files changed:**
+- src/main/java/com/temporal/jetstream/model/Flight.java (added isDemoMode field, getter/setter)
+- src/main/java/com/temporal/jetstream/workflow/FlightWorkflowImpl.java (realistic timing logic, 120x calculation, enhanced logging)
+- src/main/java/com/temporal/jetstream/dto/ActiveFlightDTO.java (added isDemoMode field)
+- src/main/java/com/temporal/jetstream/service/ActiveFlightService.java (include isDemoMode in DTO)
+- src/main/resources/static/index.html (demo mode checkbox in form, timing mode in details)
+- src/main/resources/static/app.js (demoMode in startFlight, timing badges in UI, display logic)
+- src/test/java/com/temporal/jetstream/workflow/TimingModeTest.java (created with 4 tests)
+- README.md (added 66-line Workflow Timing Modes section, updated Demo Script)
+- prd.json (updated story-16 passes: true)
+
+**Learnings for future iterations:**
+- Realistic timing demonstrates Temporal's true value prop: workflows survive hours/days
+- 120x speed factor makes 2-hour flight → 1 minute (perfect for 5-10 minute demos)
+- Dual detection (flag + prefix) maintains backward compatibility with existing DEMO* flights
+- Demo mode should be default for presentations (checkbox checked by default in UI)
+- Real-time mode valuable for: durability showcase, production evaluation, multi-day testing
+- Timing breakdown in logs critical for debugging: users see exactly how long each state will take
+- formatDuration() helper makes logs readable: "2 hours" vs "7200 seconds"
+- calculateDuration() uses Math.max(1, seconds) to ensure minimum 1-second sleep (avoids zero duration)
+- estimateFlightMinutes() uses scheduled times if available, defaults to 2 hours
+- UI timing badges use color coding: yellow for demo (warning = fast), blue for real-time (info = normal)
+- TestWorkflowEnvironment runs even faster than real timing, but demo/real-time distinction still valid
+- Tests verify isDemoMode flag preserved through workflow execution (getFlightDetails() returns correct value)
+- ActiveFlightService must query workflow for flight details to get isDemoMode field (not in execution metadata)
+- README timing mode section essential for users to understand when to use each mode
+- Use case table helps users choose correct mode: presentations=demo, durability=real-time
+- Demo mode makes presentations engaging (complete workflow in 3-5 minutes vs hours)
+- Real-time mode proves Temporal handles true long-running workflows (hours to days)
+- Timing constants at top of FlightWorkflowImpl make it easy to adjust realistic durations
+- All 5 state transitions have distinct durations: pre-boarding (2h), boarding (30m), taxi (5m), flight (2h), deboarding (30m)
+- Total real-time flight: ~5 hours, demo mode: ~3.5 minutes
+- Compilation successful, ready for manual testing in browser
+
+---
+## 2026-01-27 21:48 - story-17
+
+**What was implemented:**
+- Deleted docker-compose.yml file from project (supporting services now run via Homebrew)
+- Updated README.md Prerequisites section with complete Homebrew installation commands:
+  - brew install temporal, kafka, mongodb-community, apache-flink
+  - Detailed Flink alias setup with version-specific path instructions
+  - Important notes about Kafka including Zookeeper, MongoDB data directory, and Flink alias management
+- Updated Quick Start section with Homebrew service management:
+  - Replaced docker-compose commands with brew services start/stop
+  - Updated Kafka topic creation to use direct kafka-topics commands (no docker exec)
+  - Added brew services list verification commands
+- Updated Demo Script step-by-step instructions:
+  - Removed docker-compose ps, replaced with brew services list
+  - Updated Kafka console producer/consumer to use direct commands
+  - Added Flink Web UI verification
+- Updated Kafka Integration section:
+  - Removed all docker exec commands for Kafka
+  - Updated manual testing to use kafka-console-producer directly
+  - Updated monitoring to use kafka-console-consumer directly
+- Updated Flink Integration section:
+  - Changed raw event publishing from docker exec to echo piping
+  - Updated enriched event monitoring commands
+- Updated MongoDB Persistence section:
+  - Changed Docker prerequisite to Homebrew brew services
+  - Added data directory path and service verification commands
+- Updated Project Structure and Technology Stack:
+  - Removed docker-compose.yml reference
+  - Added detailed file structure with all major directories
+  - Updated technology stack to note Homebrew installation method
+- Updated Stopping Services section:
+  - Replaced docker-compose down with brew services stop
+  - Added stop-flink alias usage
+- Comprehensive Troubleshooting section enhancements:
+  - Added brew service restart and log checking commands
+  - Added Flink cluster troubleshooting with port conflict detection
+  - Added MongoDB connection debugging steps
+  - Added complete default ports reference table
+- Updated Contributing section to remove Docker Swarm reference
+- Updated application.yml:
+  - Changed MongoDB URI from authenticated admin connection to simple localhost connection
+  - Fixed server port from 8081 to 8080 (matches README documentation)
+- Updated AGENTS.md:
+  - Changed technology stack notes from docker-compose to Homebrew services
+  - Added Flink alias notes
+  - Updated Development Workflow to use brew services and Flink aliases
+  - Removed docker exec references in Testing Kafka Integration section
+- Updated check.sh script:
+  - Replaced docker-compose ps with brew services list
+  - Added Flink Web UI connectivity check
+  - Updated expected output messages
+
+**Files changed:**
+- docker-compose.yml (deleted)
+- README.md (extensive updates - 20+ sections modified)
+- src/main/resources/application.yml (MongoDB URI and server port corrected)
+- AGENTS.md (Homebrew service management updates)
+- check.sh (brew services verification commands)
+- prd.json (updated story-17 passes: true)
+
+**Learnings for future iterations:**
+- Homebrew provides excellent local development experience on macOS without container overhead
+- brew services manages Kafka and MongoDB as background services with simple start/stop/restart
+- Flink doesn't have a brew plist so aliases (start-flink, stop-flink) are the best approach
+- Kafka via brew includes Zookeeper automatically - no separate installation needed
+- MongoDB via brew creates data directory at /opt/homebrew/var/mongodb
+- Default brew service logs: /opt/homebrew/var/log/{service}/
+- Direct kafka-topics and kafka-console-producer/consumer commands work when Kafka runs locally
+- No need for docker exec - all Kafka CLI tools available directly in PATH after brew install
+- Flink version in alias path should match installed version (check with ls /opt/homebrew/Cellar/apache-flink/)
+- MongoDB connection without authentication is simpler for local development: mongodb://localhost:27017/database
+- Application port 8080 is standard Spring Boot default, corrected from 8081
+- Troubleshooting becomes easier with direct access to service logs and brew services management
+- Port conflicts easier to debug with lsof -i :PORT commands
+- brew services list provides at-a-glance status of all managed services
+- No container networking complexity - all services on localhost with standard ports
+- Fresh macOS environment setup is straightforward: brew install all services, set up Flink aliases, done
+- Documentation must be comprehensive for brew-based setup: installation, aliases, verification, troubleshooting
+- check.sh script provides quick validation that all services are running correctly
+- Removed all docker/docker-compose references from codebase completely (no longer needed)
+- Project now follows PRD requirement: "NO docker-compose - all services run locally via brew/binaries"
+- Compilation successful with ./mvnw clean compile - no build issues from changes
+- All acceptance criteria for story-17 met: docker-compose deleted, README updated, brew commands throughout, application.yml uses localhost, no docker references remain
+
+---
+
