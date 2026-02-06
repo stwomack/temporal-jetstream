@@ -279,14 +279,20 @@ kafka-topics --list --bootstrap-server localhost:9092
 ./mvnw clean install
 ```
 
-This will build both the Spring Boot application and the Flink enrichment job JAR (`target/flink-enrichment-job.jar`).
+### 6. Build and Submit Flink Job (Separate Project)
 
-### 6. Submit Flink Job
-
-Submit the Flink enrichment job to the running Flink cluster:
+The Flink enrichment job is in a separate project: `../flink-enrichment`
 
 ```bash
-flink run -c com.temporal.jetstream.flink.FlinkEnrichmentJob target/flink-enrichment-job.jar
+# Build the Flink project
+cd ../flink-enrichment
+mvn clean package
+
+# Submit to Flink cluster
+flink run -c com.temporal.flink.FlinkEnrichmentJob target/flink-enrichment-job.jar
+
+# Return to temporal-jetstream
+cd ../temporal-jetstream
 ```
 
 Verify the job is running in the Flink Web UI at `http://localhost:8081`.
@@ -1322,10 +1328,13 @@ For production systems, Flink enrichment might include:
 
 ### Building and Running the Flink Job
 
+The Flink enrichment job is in a separate project: `../flink-enrichment`
+
 #### Build the Flink JAR
 
 ```bash
-./mvnw clean package
+cd ../flink-enrichment
+mvn clean package
 ```
 
 This creates `target/flink-enrichment-job.jar` with all dependencies bundled (via Maven Shade Plugin).
@@ -1341,7 +1350,7 @@ Verify Flink Web UI is accessible at `http://localhost:8081`.
 #### Submit the Job
 
 ```bash
-flink run -c com.temporal.jetstream.flink.FlinkEnrichmentJob target/flink-enrichment-job.jar
+flink run -c com.temporal.flink.FlinkEnrichmentJob target/flink-enrichment-job.jar
 ```
 
 #### Verify Job is Running
@@ -1758,10 +1767,18 @@ Demonstrate parent-child workflow orchestration with a 3-leg connecting flight:
 
 ### Start Flink Enrichment Job
 
-Start the optional Flink stream processing job for event enrichment:
+Start the optional Flink stream processing job for event enrichment (from the separate `flink-enrichment` project):
 
 ```bash
-./start-flink.sh
+cd ../flink-enrichment
+./start-flink-job.sh
+```
+
+Or submit to a running Flink cluster:
+
+```bash
+cd ../flink-enrichment
+flink run -c com.temporal.flink.FlinkEnrichmentJob target/flink-enrichment-job.jar
 ```
 
 **What it does:**
