@@ -11,17 +11,15 @@ import org.slf4j.Logger;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Random;
 
 public class FlightWorkflowImpl implements FlightWorkflow {
 
     private static final Logger logger = Workflow.getLogger(FlightWorkflowImpl.class);
 
-    // Timing constants (in seconds for demo)
-    private static final long SCHEDULED_TO_BOARDING_SECONDS = 20;
-    private static final long BOARDING_TO_DEPARTED_SECONDS = 20;
-    private static final long DEPARTED_TO_INFLIGHT_SECONDS = 20;
-    private static final long INFLIGHT_TO_LANDED_SECONDS = 20;
-    private static final long LANDED_TO_COMPLETED_SECONDS = 20;
+    // Timing range (in seconds) for randomized phase durations
+    private static final int MIN_PHASE_SECONDS = 15;
+    private static final int MAX_PHASE_SECONDS = 45;
 
     // Instance variables to track signal data
     private int delayMinutes = 0;
@@ -50,8 +48,6 @@ public class FlightWorkflowImpl implements FlightWorkflow {
 
     @Override
     public Flight executeFlight(Flight flight) {
-        logger.info("Starting flight workflow for: {} [20s per phase]", flight.getFlightNumber());
-
         // Track current flight for queries
         currentFlight = flight;
 
@@ -60,12 +56,18 @@ public class FlightWorkflowImpl implements FlightWorkflow {
             currentGate = flight.getGate();
         }
 
-        // Use fixed durations for demo (20 seconds each phase)
-        Duration scheduledToBoardingDuration = Duration.ofSeconds(SCHEDULED_TO_BOARDING_SECONDS);
-        Duration boardingToDepartedDuration = Duration.ofSeconds(BOARDING_TO_DEPARTED_SECONDS);
-        Duration departedToInflightDuration = Duration.ofSeconds(DEPARTED_TO_INFLIGHT_SECONDS);
-        Duration inflightToLandedDuration = Duration.ofSeconds(INFLIGHT_TO_LANDED_SECONDS);
-        Duration landedToCompletedDuration = Duration.ofSeconds(LANDED_TO_COMPLETED_SECONDS);
+        // Generate random durations for each phase (deterministic random for replay)
+        Random random = Workflow.newRandom();
+        Duration scheduledToBoardingDuration = randomDuration(random);
+        Duration boardingToDepartedDuration = randomDuration(random);
+        Duration departedToInflightDuration = randomDuration(random);
+        Duration inflightToLandedDuration = randomDuration(random);
+        Duration landedToCompletedDuration = randomDuration(random);
+
+        long totalSeconds = scheduledToBoardingDuration.getSeconds() + boardingToDepartedDuration.getSeconds()
+            + departedToInflightDuration.getSeconds() + inflightToLandedDuration.getSeconds()
+            + landedToCompletedDuration.getSeconds();
+        logger.info("Starting flight workflow for: {} [~{} total]", flight.getFlightNumber(), formatDuration(Duration.ofSeconds(totalSeconds)));
 
         // SCHEDULED -> BOARDING
         flight.setCurrentState(FlightState.SCHEDULED);
@@ -131,6 +133,14 @@ public class FlightWorkflowImpl implements FlightWorkflow {
         updateFlightWithSignalData(flight);
 
         return flight;
+    }
+
+    /**
+     * Generates a random duration between MIN_PHASE_SECONDS and MAX_PHASE_SECONDS.
+     */
+    private Duration randomDuration(Random random) {
+        int seconds = MIN_PHASE_SECONDS + random.nextInt(MAX_PHASE_SECONDS - MIN_PHASE_SECONDS + 1);
+        return Duration.ofSeconds(seconds);
     }
 
     /**

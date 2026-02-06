@@ -317,22 +317,23 @@ The application will start on `http://localhost:8082`.
 
 ## Workflow Timing
 
-All flights use fixed 20-second phase durations for fast, predictable demos:
+Each flight phase uses a randomized duration between 15-45 seconds:
 
 | Phase | Duration |
 |-------|----------|
-| SCHEDULED → BOARDING | 20 seconds |
-| BOARDING → DEPARTED | 20 seconds |
-| DEPARTED → IN_FLIGHT | 20 seconds |
-| IN_FLIGHT → LANDED | 20 seconds |
-| LANDED → COMPLETED | 20 seconds |
+| SCHEDULED → BOARDING | 15-45 seconds |
+| BOARDING → DEPARTED | 15-45 seconds |
+| DEPARTED → IN_FLIGHT | 15-45 seconds |
+| IN_FLIGHT → LANDED | 15-45 seconds |
+| LANDED → COMPLETED | 15-45 seconds |
 
-**Total Flight Duration:** ~100 seconds (under 2 minutes)
+**Total Flight Duration:** ~75-225 seconds (1-4 minutes)
 
-This timing is optimized for:
-- **Live presentations** - Complete flight lifecycle quickly
-- **Development/testing** - Fast feedback cycles
-- **Chaos testing** - Enough time to kill services and watch recovery
+This randomized timing:
+- **Creates realistic variance** - Multiple flights progress at different rates
+- **Demonstrates independence** - Each workflow has its own timing
+- **Supports chaos testing** - Enough time to kill services and watch recovery
+- **Uses deterministic random** - `Workflow.newRandom()` ensures correct replay
 
 ## Complete Demo Script (~5 minutes)
 
@@ -391,7 +392,7 @@ curl -X POST http://localhost:8082/api/flights/start \
   }'
 ```
 
-**Expected Result:** Flight workflow starts and progresses through states every 20 seconds: SCHEDULED → BOARDING → DEPARTED → IN_FLIGHT → LANDED → COMPLETED (~100 seconds total)
+**Expected Result:** Flight workflow starts and progresses through states (15-45 seconds each): SCHEDULED → BOARDING → DEPARTED → IN_FLIGHT → LANDED → COMPLETED (~1-4 minutes total)
 
 ### Step 3: Send Events to Update Flight State
 
@@ -442,7 +443,7 @@ This step shows Temporal's durability - workflows survive process restarts.
 
 **Start a Flight:**
 
-Via UI: Start any flight (e.g., `TEST999`). Flights take ~100 seconds to complete (20 seconds per phase).
+Via UI: Start any flight (e.g., `TEST999`). Flights take ~1-4 minutes to complete (15-45 seconds per phase).
 
 **Simulate a Worker Failure:**
 
@@ -833,7 +834,7 @@ The application includes a special endpoint and UI button to simulate a worker f
 
 #### Via Web UI
 
-1. Start a flight (e.g., "TEST999") - flights progress through states every 20 seconds (~100 seconds total)
+1. Start a flight (e.g., "TEST999") - flights progress through states (15-45 seconds each, ~1-4 minutes total)
 2. Watch the flight progress through states: SCHEDULED → BOARDING → DEPARTED → IN_FLIGHT → LANDED → COMPLETED
 3. While the flight is in progress, click the **"⚡ Simulate Failure"** button in the Active Flights panel
 4. The worker will stop and restart (simulating a crash and recovery)
@@ -1763,7 +1764,7 @@ Demonstrate parent-child workflow orchestration with a 3-leg connecting flight:
 - Cascade cancellation (cancel one leg → subsequent legs auto-cancel)
 - Temporal UI shows workflow hierarchy
 
-**Timeline:** ~5 minutes total (100s per leg + turnaround)
+**Timeline:** ~5-15 minutes total (1-4 min per leg + turnaround)
 
 ### Start Flink Enrichment Job
 
